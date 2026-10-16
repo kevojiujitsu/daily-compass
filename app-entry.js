@@ -101,6 +101,7 @@ function journalHistory() {
 }
 async function makeReflection(useAi = false) {
   const list = current();
+  let failure = '';
   if (useAi && aiReady) {
     try {
       const response = await fetch(apiUrl('/api/insights'), {
@@ -117,15 +118,17 @@ async function makeReflection(useAi = false) {
       if (!response.ok) throw new Error(data.error || 'AI could not respond');
       setStatus('AI reflection updated', true);
       return { ...data, source: 'ai', advice: (data.advice || []).map(a => ({ id: list[a.entryIndex]?.id, text: String(a.text || '').slice(0, 700) })).filter(a => a.id && a.text) };
-    } catch {
+    } catch (error) {
+      failure = String(error?.message || 'The AI request did not complete.').slice(0, 220);
       setStatus('AI request failed · local guidance shown');
-      toast('Could not complete the AI request. Showing general local guidance instead.');
+      toast(`${failure} Showing general local guidance instead.`);
     }
   } else if (useAi) {
+    failure = 'Online AI is not connected.';
     setStatus('AI offline · local guidance shown');
     toast('Online AI is not connected yet. Showing local guidance instead.');
   }
-  return { ...localReflection(list), source: 'local' };
+  return { ...localReflection(list), source: 'local', failure };
 }
 function renderEntries(list) {
   const visible = list.filter(e => e.category !== 'Tasks');
@@ -158,7 +161,9 @@ async function render(useAi = false) {
   const note = document.getElementById('reflectionNote');
   if (note) note.textContent = reflection.source === 'ai'
     ? 'AI reflection generated from this day’s entries and journal notes from the previous 30 days.'
-    : 'General local guidance is shown. Tap “Refresh my reflection & nudge” to request a personalized AI reflection.';
+    : reflection.failure
+      ? `${reflection.failure} General local guidance is shown; tap “Refresh my reflection & nudge” to try again.`
+      : 'General local guidance is shown. Tap “Refresh my reflection & nudge” to request a personalized AI reflection.';
   document.getElementById('summary').textContent = reflection.summary || 'Your day is taking shape.';
   document.getElementById('nudge').textContent = reflection.nudge || reflection.advice?.[0]?.text || localReflection(list).nudge;
   document.getElementById('highlights').innerHTML = (reflection.highlights || []).map(x => `<li>${esc(x)}</li>`).join('');

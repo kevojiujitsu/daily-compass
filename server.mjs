@@ -293,16 +293,30 @@ Prioritize tasks realistically. Keep health guidance general; never diagnose or 
           })
         });
         const result = await response.json();
-        if (!response.ok) throw new Error('The AI service could not create a reflection.');
+        if (!response.ok) {
+          const providerCode = result?.error?.code || result?.error?.type || '';
+          console.error('OpenAI reflection request failed', { status: response.status, code: providerCode || 'unknown' });
+          const publicMessage = providerCode === 'insufficient_quota'
+            ? 'The OpenAI API account has no available credit. Check its billing and usage limits.'
+            : providerCode === 'invalid_api_key'
+              ? 'Render rejected the OpenAI API key. Update OPENAI_API_KEY in the service environment.'
+              : providerCode === 'model_not_found'
+                ? 'The configured OpenAI model is not available to this API account.'
+                : response.status === 429
+                  ? 'The OpenAI API rate limit was reached. Wait briefly and try again.'
+                  : `The OpenAI API rejected the request (HTTP ${response.status}).`;
+          throw Object.assign(new Error(publicMessage), { publicMessage });
+        }
         const text = result.output?.flatMap(item => item.content || []).find(part => part.type === 'output_text')?.text;
         if (!text) throw new Error('The AI service could not create a reflection.');
         sendJson(res, 200, { ...safeInsights(JSON.parse(text), entries.length), quota: reservation.quota }, cors);
-      } catch {
+      } catch (error) {
+        if (!error.publicMessage) console.error('OpenAI reflection processing failed', { name: error.name || 'Error' });
         await mutateDatabase(db => {
           const user = db.users.find(item => item.id === auth.user.id);
           if (user && user.usage?.[reservation.quota.month] === reservation.quota.count) user.usage[reservation.quota.month] -= 1;
         });
-        sendJson(res, 502, { error: 'The AI service could not create a reflection. Please try again.' }, cors);
+        sendJson(res, 502, { error: error.publicMessage || 'The AI service could not create a reflection. Please try again.' }, cors);
       }
       return true;
     }
