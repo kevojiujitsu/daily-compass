@@ -112,15 +112,20 @@ async function makeReflection(useAi = false) {
       if (!response.ok && data.code === 'MONTHLY_LIMIT_REACHED') {
         document.getElementById('plusInfo').hidden = false;
         toast('You have used this month’s AI reflections. Your allowance resets next month.');
-        return localReflection(list);
+        return { ...localReflection(list), source: 'local' };
       }
       if (!response.ok) throw new Error(data.error || 'AI could not respond');
-      return { ...data, advice: (data.advice || []).map(a => ({ id: list[a.entryIndex]?.id, text: String(a.text || '').slice(0, 700) })).filter(a => a.id && a.text) };
-    } catch { toast('Could not reach online AI. Showing local guidance instead.'); }
+      setStatus('AI reflection updated', true);
+      return { ...data, source: 'ai', advice: (data.advice || []).map(a => ({ id: list[a.entryIndex]?.id, text: String(a.text || '').slice(0, 700) })).filter(a => a.id && a.text) };
+    } catch {
+      setStatus('AI request failed · local guidance shown');
+      toast('Could not complete the AI request. Showing general local guidance instead.');
+    }
   } else if (useAi) {
+    setStatus('AI offline · local guidance shown');
     toast('Online AI is not connected yet. Showing local guidance instead.');
   }
-  return localReflection(list);
+  return { ...localReflection(list), source: 'local' };
 }
 function renderEntries(list) {
   const visible = list.filter(e => e.category !== 'Tasks');
@@ -150,11 +155,15 @@ async function render(useAi = false) {
   renderEntries(list);
   renderTasks();
   const reflection = await makeReflection(useAi);
+  const note = document.getElementById('reflectionNote');
+  if (note) note.textContent = reflection.source === 'ai'
+    ? 'AI reflection generated from this day’s entries and journal notes from the previous 30 days.'
+    : 'General local guidance is shown. Tap “Refresh my reflection & nudge” to request a personalized AI reflection.';
   document.getElementById('summary').textContent = reflection.summary || 'Your day is taking shape.';
   document.getElementById('nudge').textContent = reflection.nudge || reflection.advice?.[0]?.text || localReflection(list).nudge;
   document.getElementById('highlights').innerHTML = (reflection.highlights || []).map(x => `<li>${esc(x)}</li>`).join('');
-  reflection.advice?.forEach(a => { const e = entries.find(x => x.id === a.id); if (e) e.advice = a.text; });
-  if (reflection.advice?.length) {
+  if (reflection.source === 'ai') reflection.advice?.forEach(a => { const e = entries.find(x => x.id === a.id); if (e) e.advice = a.text; });
+  if (reflection.source === 'ai' && reflection.advice?.length) {
     save();
     document.querySelectorAll('.entry[data-entry-id]').forEach(node => {
       const item = entries.find(x => x.id === node.dataset.entryId);
