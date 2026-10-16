@@ -289,7 +289,35 @@ Use current entries as the main focus. Use mood, task completion, and due date w
 Prioritize tasks realistically. Keep health guidance general; never diagnose or imply a journal note is a medical assessment. Be supportive without automatic praise or shaming. If there are no selected-day entries, acknowledge relevant journal history if available and invite the person to add a note.`,
             input: JSON.stringify({ date: String(body.date || '').slice(0, 10), entries, previousJournalEntries: journalHistory }),
             max_output_tokens: 3600,
-            text: { format: { type: 'json_object' } }
+            text: {
+              format: {
+                type: 'json_schema',
+                name: 'daily_compass_reflection',
+                strict: true,
+                schema: {
+                  type: 'object',
+                  properties: {
+                    summary: { type: 'string' },
+                    nudge: { type: 'string' },
+                    highlights: { type: 'array', items: { type: 'string' } },
+                    advice: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          entryIndex: { type: 'integer' },
+                          text: { type: 'string' }
+                        },
+                        required: ['entryIndex', 'text'],
+                        additionalProperties: false
+                      }
+                    }
+                  },
+                  required: ['summary', 'nudge', 'highlights', 'advice'],
+                  additionalProperties: false
+                }
+              }
+            }
           })
         });
         const result = await response.json();
