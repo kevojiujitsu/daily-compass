@@ -295,13 +295,17 @@ Prioritize tasks realistically. Keep health guidance general; never diagnose or 
         const result = await response.json();
         if (!response.ok) {
           const providerCode = result?.error?.code || result?.error?.type || '';
-          console.error('OpenAI reflection request failed', { status: response.status, code: providerCode || 'unknown' });
+          const providerMessage = String(result?.error?.message || '').replace(/\s+/g, ' ').slice(0, 280);
+          const providerParam = String(result?.error?.param || '').slice(0, 80);
+          console.error('OpenAI reflection request failed', { status: response.status, code: providerCode || 'unknown', param: providerParam || undefined, message: providerMessage || undefined });
           const publicMessage = providerCode === 'insufficient_quota'
             ? 'The OpenAI API account has no available credit. Check its billing and usage limits.'
             : providerCode === 'invalid_api_key'
               ? 'Render rejected the OpenAI API key. Update OPENAI_API_KEY in the service environment.'
               : providerCode === 'model_not_found'
                 ? 'The configured OpenAI model is not available to this API account.'
+                : response.status === 400 && providerMessage
+                  ? `OpenAI rejected the reflection request: ${providerMessage}`
                 : response.status === 429
                   ? 'The OpenAI API rate limit was reached. Wait briefly and try again.'
                   : `The OpenAI API rejected the request (HTTP ${response.status}).`;
