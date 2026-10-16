@@ -1,0 +1,1 @@
+window.DAILY_COMPASS_API_BASE = "";

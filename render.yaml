@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: daily-compass-api
+    runtime: node
+    plan: starter
+    numInstances: 1
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/status
+    disk:
+      name: daily-compass-accounts
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DAILY_COMPASS_DATA_DIR
+        value: /var/data
+      - key: ALLOWED_ORIGINS
+        value: capacitor://localhost,https://localhost
+      - key: OPENAI_API_KEY
+        sync: false

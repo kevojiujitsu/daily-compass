@@ -1,0 +1,13 @@
+node_modules/
+www/
+.env
+.DS_Store
+android/.gradle/
+android/local.properties
+android/**/build/
+ios/Pods/
+ios/build/
+ios/DerivedData/
+
+# Account database contains private account information
+data/
