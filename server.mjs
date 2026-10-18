@@ -163,10 +163,13 @@ function socialState(db, user) { user.social ||= { friends: [], requests: [], po
 function friendPair(a, b) { return a.social.friends.includes(b.id) && b.social.friends.includes(a.id) && !a.social.blocks.includes(b.id) && !b.social.blocks.includes(a.id); }
 function publicSocialProfile(profile = {}) {
   const avatar = typeof profile.avatar === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(profile.avatar) && profile.avatar.length <= 500_000 ? profile.avatar : '';
-  const hobbies = Array.isArray(profile.hobbies) ? [...new Set(profile.hobbies.filter(value => ['music','fitness','nature','books','cooking','art','gaming','travel'].includes(value)))] : [];
+  const hobbies = Array.isArray(profile.hobbies) ? [...new Set(profile.hobbies.filter(value => ['music','fitness','nature','books','cooking','art','gaming','travel','wrestling','jiujitsu','martialarts','yoga','running','hiking','photography','writing','gardening','dance','movies','pets','cycling','swimming','volunteering','crafts','sports'].includes(value)))] : [];
   let spotify = '';
   try { const url = new URL(String(profile.spotify || '')); if (url.protocol === 'https:' && url.hostname === 'open.spotify.com' && /^\/track\/[A-Za-z0-9]+\/?$/.test(url.pathname)) spotify = url.href.slice(0, 220); } catch {}
-  return { avatar, hobbies, spotify };
+  const ageValue = Number(profile.age);
+  const age = profile.age !== '' && profile.age !== null && Number.isInteger(ageValue) && ageValue >= 18 && ageValue <= 120 ? ageValue : null;
+  const relationshipStatus = ['single','dating','in-relationship','engaged','married','its-complicated','separated','divorced','widowed'].includes(profile.relationshipStatus) ? profile.relationshipStatus : '';
+  return { avatar, hobbies, spotify, age, hometown: String(profile.hometown || '').trim().slice(0, 80), quote: String(profile.quote || '').trim().slice(0, 160), relationshipStatus };
 }
 function publicSocialUser(user, includeProfile = true) { return { id: user.id, name: user.name, profile: includeProfile ? publicSocialProfile(user.social?.profile) : { avatar: '', hobbies: [], spotify: '' } }; }
 function publicPost(post) { return { id: post.id, author: post.author, text: post.text, photo: post.photo || '', createdAt: post.createdAt, comments: post.comments || [], reactions: post.reactions || {}, reports: post.reports || [] }; }
@@ -309,6 +312,8 @@ async function handleApi(req, res, url, cors) {
           if (action === 'profile') {
             const submitted = body.profile || {};
             if (String(submitted.avatar || '').length > 500_000) return { error: 'That profile photo is too large. Choose another photo.' };
+            const ageProvided = submitted.age !== '' && submitted.age !== null && submitted.age !== undefined;
+            if (ageProvided && (!Number.isInteger(Number(submitted.age)) || Number(submitted.age) < 18 || Number(submitted.age) > 120)) return { error: 'Enter an age from 18 to 120, or leave it blank.' };
             const candidate = String(submitted.spotify || '').trim();
             if (candidate && !publicSocialProfile({ spotify: candidate }).spotify) return { error: 'Use a Spotify song link in the format open.spotify.com/track/…' };
             actorState.profile = publicSocialProfile(submitted);

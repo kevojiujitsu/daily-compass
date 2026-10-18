@@ -19,7 +19,7 @@ let selectedMood = '';
 let planState = { tier: 'free', count: 0, limit: FREE_AI_LIMIT, month: '' };
 const profile = (() => { try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch { return null; } })();
 let socialUserId = profile?.id || '';
-let communityProfile = profile?.communityProfile || { avatar: '', hobbies: [], spotify: '' };
+let communityProfile = profile?.communityProfile || { avatar: '', hobbies: [], spotify: '', age: '', hometown: '', quote: '', relationshipStatus: '' };
 let profilePhotoData = communityProfile.avatar || '';
 let communityGuidelinesAccepted = false;
 if (!profile?.name || !Number.isInteger(profile.age) || profile.age < 18 || !localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(UNLOCK_KEY) !== 'true') location.replace('welcome.html');
@@ -191,18 +191,31 @@ async function loadModeration() {
   catch { panel.hidden = true; }
 }
 function initials(name) { return String(name || '?').split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase(); }
-const hobbyIcons = { music: '🎵', fitness: '🏋️', nature: '🌿', books: '📚', cooking: '🍳', art: '🎨', gaming: '🎮', travel: '🧭' };
+const hobbyIcons = { music: '🎵', fitness: '🏋️', nature: '🌿', books: '📚', cooking: '🍳', art: '🎨', gaming: '🎮', travel: '🧭', wrestling: '🤼', jiujitsu: '🥋', martialarts: '🥊', yoga: '🧘', running: '🏃', hiking: '🥾', photography: '📷', writing: '✍️', gardening: '🪴', dance: '💃', movies: '🎬', pets: '🐾', cycling: '🚴', swimming: '🏊', volunteering: '🤝', crafts: '🧶', sports: '⚽' };
 function safeSpotify(profileData) { return /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]+\/?(?:\?[^\s]*)?$/.test(profileData?.spotify || '') ? profileData.spotify : ''; }
 function socialAvatar(person, className = 'friend-avatar') { const avatar = person.profile?.avatar; return avatar && /^data:image\/(jpeg|png|webp);base64,/.test(avatar) ? `<img class="${className} social-person-avatar" src="${esc(avatar)}" alt="${esc(person.name)}'s profile photo">` : `<span class="${className}">${esc(initials(person.name))}</span>`; }
-function profileHighlights(profileData) { const hobbies = (profileData?.hobbies || []).filter(key => hobbyIcons[key]).map(key => `<span title="${esc(key)}">${hobbyIcons[key]}</span>`).join(''); const spotify = safeSpotify(profileData); return `${hobbies ? `<div class="profile-hobby-strip" aria-label="Hobbies">${hobbies}</div>` : ''}${spotify ? `<a class="spotify-profile-link" href="${esc(spotify)}" target="_blank" rel="noopener noreferrer">♫ Favorite song on Spotify ↗</a>` : ''}`; }
+const relationshipLabels = { single: 'Single', dating: 'Dating', 'in-relationship': 'In a relationship', engaged: 'Engaged', married: 'Married', 'its-complicated': 'It’s complicated', separated: 'Separated', divorced: 'Divorced', widowed: 'Widowed' };
+function profileHighlights(profileData) {
+  const hobbies = (profileData?.hobbies || []).filter(key => hobbyIcons[key]).map(key => `<span title="${esc(key)}">${hobbyIcons[key]}</span>`).join('');
+  const spotify = safeSpotify(profileData), age = Number.isInteger(Number(profileData?.age)) && Number(profileData.age) >= 18 && Number(profileData.age) <= 120 ? Number(profileData.age) : '';
+  const details = [age ? `${age}` : '', String(profileData?.hometown || '').trim(), relationshipLabels[profileData?.relationshipStatus] || ''].filter(Boolean);
+  const detailLine = details.length ? `<div class="profile-detail-line">${details.map(esc).join(' · ')}</div>` : '';
+  const quote = String(profileData?.quote || '').trim();
+  return `${detailLine}${quote ? `<p class="profile-quote">“${esc(quote)}”</p>` : ''}${hobbies ? `<div class="profile-hobby-strip" aria-label="Hobbies">${hobbies}</div>` : ''}${spotify ? `<a class="spotify-profile-link" href="${esc(spotify)}" target="_blank" rel="noopener noreferrer">♫ Favorite song on Spotify ↗</a>` : ''}`;
+}
 function renderCommunityProfile(profileData = communityProfile) {
-  communityProfile = { avatar: String(profileData?.avatar || ''), hobbies: Array.isArray(profileData?.hobbies) ? profileData.hobbies.filter(key => hobbyIcons[key]) : [], spotify: String(profileData?.spotify || '') };
+  const ageValue = Number(profileData?.age);
+  communityProfile = { avatar: String(profileData?.avatar || ''), hobbies: Array.isArray(profileData?.hobbies) ? profileData.hobbies.filter(key => hobbyIcons[key]) : [], spotify: String(profileData?.spotify || ''), age: profileData?.age !== '' && profileData?.age != null && Number.isInteger(ageValue) && ageValue >= 18 && ageValue <= 120 ? ageValue : '', hometown: String(profileData?.hometown || '').slice(0, 80), quote: String(profileData?.quote || '').slice(0, 160), relationshipStatus: relationshipLabels[profileData?.relationshipStatus] ? profileData.relationshipStatus : '' };
   profilePhotoData = communityProfile.avatar;
   const preview = document.getElementById('profileAvatarPreview'), fallback = document.getElementById('profileAvatarFallback');
   if (communityProfile.avatar) { preview.src = communityProfile.avatar; preview.hidden = false; fallback.hidden = true; } else { preview.removeAttribute('src'); preview.hidden = true; fallback.hidden = false; }
   document.getElementById('removeProfilePhotoBtn').hidden = !communityProfile.avatar;
   document.querySelectorAll('.hobby-options input[type="checkbox"]').forEach(input => { input.checked = communityProfile.hobbies.includes(input.value); });
   document.getElementById('profileSpotify').value = communityProfile.spotify;
+  document.getElementById('profileAge').value = communityProfile.age;
+  document.getElementById('profileHometown').value = communityProfile.hometown;
+  document.getElementById('profileQuote').value = communityProfile.quote;
+  document.getElementById('profileRelationship').value = communityProfile.relationshipStatus;
 }
 function socialPerson(person, buttonText, action, extraClass = 'secondary-btn') { return `<div class="friend-row">${socialAvatar(person)}<div class="friend-info"><strong>${esc(person.name)}</strong>${profileHighlights(person.profile)}<small>Daily Compass member</small></div><button type="button" class="${extraClass}" data-community-action="${action}" data-user-id="${esc(person.id)}" ${action === 'none' ? 'disabled' : ''}>${esc(buttonText)}</button></div>`; }
 async function loadSocial() {
@@ -270,8 +283,10 @@ document.getElementById('profilePhoto').onchange = async event => {
 document.getElementById('removeProfilePhotoBtn').onclick = () => { profilePhotoData = ''; document.getElementById('profilePhoto').value = ''; const preview = document.getElementById('profileAvatarPreview'); preview.removeAttribute('src'); preview.hidden = true; document.getElementById('profileAvatarFallback').hidden = false; document.getElementById('removeProfilePhotoBtn').hidden = true; };
 function resizeProfilePhoto(file) { return new Promise((resolve, reject) => { const image = new Image(), url = URL.createObjectURL(file); image.onload = () => { const side = Math.min(image.width, image.height), x = (image.width - side) / 2, y = (image.height - side) / 2, canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 320; canvas.getContext('2d').drawImage(image, x, y, side, side, 0, 0, 320, 320); URL.revokeObjectURL(url); resolve(canvas.toDataURL('image/jpeg', .76)); }; image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Invalid photo')); }; image.src = url; }); }
 document.getElementById('saveProfileBtn').onclick = async event => {
-  const button = event.currentTarget; button.disabled = true;
-  const submitted = { avatar: profilePhotoData, hobbies: [...document.querySelectorAll('.hobby-options input:checked')].map(input => input.value), spotify: document.getElementById('profileSpotify').value.trim() };
+  const button = event.currentTarget, ageField = document.getElementById('profileAge'), ageValue = Number(ageField.value);
+  if (ageField.value && (!Number.isInteger(ageValue) || ageValue < 18 || ageValue > 120)) { toast('Enter an age from 18 to 120, or leave it blank.'); ageField.focus(); return; }
+  button.disabled = true;
+  const submitted = { avatar: profilePhotoData, hobbies: [...document.querySelectorAll('.hobby-options input:checked')].map(input => input.value), spotify: document.getElementById('profileSpotify').value.trim(), age: document.getElementById('profileAge').value, hometown: document.getElementById('profileHometown').value.trim(), quote: document.getElementById('profileQuote').value.trim(), relationshipStatus: document.getElementById('profileRelationship').value };
   try { const result = await socialRequest({ action: 'profile', profile: submitted }); renderCommunityProfile(result.profile); if (profile) { profile.communityProfile = communityProfile; localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } toast('Your profile is saved for your friends.'); }
   catch (error) { toast(error.message || 'Could not save your profile.'); }
   finally { button.disabled = false; }
