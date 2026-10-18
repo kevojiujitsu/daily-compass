@@ -20,3 +20,5 @@ services:
         value: capacitor://localhost,https://localhost
       - key: OPENAI_API_KEY
         sync: false
+      - key: DAILY_COMPASS_MODERATOR_EMAIL
+        sync: false
