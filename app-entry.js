@@ -104,7 +104,7 @@ function showPage(name) {
 const plusDialog = document.getElementById('plusDialog');
 function openPlusDialog() { plusDialog.showModal(); }
 document.getElementById('topPlusBtn').onclick = openPlusDialog;
-document.getElementById('plusPreviewBtn').onclick = openPlusDialog;
+
 const icons = { Journal: '✍️', Tasks: '✓', Health: '☘️' };
 document.querySelectorAll('.cat').forEach(b => b.addEventListener('click', () => {
   selected = b.dataset.cat;
@@ -475,7 +475,7 @@ async function refreshReflection() {
 }
 document.getElementById('refreshBtn').onclick = refreshReflection;
 document.getElementById('refreshBtn').textContent = 'Refresh my reflection & nudge';
-document.getElementById('plusPreviewBtn').onclick = () => toast('Compass Plus is planned at US$1.99/month. Google Play purchases are not connected yet.');
+
 updatePlanCard();
 initMoodGate();
 const musicTracks = {
