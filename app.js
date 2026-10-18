@@ -219,7 +219,6 @@ async function refreshReflection() {
 }
 document.getElementById('refreshBtn').onclick = refreshReflection;
 document.getElementById('refreshBtn').textContent = 'Refresh my reflection & nudge';
-document.getElementById('plusPreviewBtn').onclick = () => toast('Compass Plus is planned at US$1.99/month. Google Play purchases are not connected yet.');
 updatePlanCard();
 const musicTracks = {
   'quiet-piano': { kind: 'piano', notes: [392, 523.25, 659.25, 523.25, 440, 587.33, 698.46, 587.33, 392, 493.88, 587.33, null], wave: 'sine', interval: 920 },
