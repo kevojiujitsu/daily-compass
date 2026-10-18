@@ -2,16 +2,20 @@ const KEY = 'daily-compass-entries-v1';
 const PROFILE_KEY = 'daily-compass-profile-v1';
 const UNLOCK_KEY = 'daily-compass-unlocked-v1';
 const AUTH_KEY = 'daily-compass-auth-token-v1';
+const MOOD_CHECKINS_KEY = 'daily-compass-mood-checkins-v1';
+const MOOD_DONE_KEY = 'daily-compass-mood-completed-v1';
 const FREE_AI_LIMIT = 10;
 const PLUS_AI_LIMIT = 30;
 let selected = 'Journal';
 let selectedDate = today();
 let aiReady = false;
 let entries = load();
+let moodCheckins = loadMoodCheckins();
+let selectedMood = '';
 let planState = { tier: 'free', count: 0, limit: FREE_AI_LIMIT, month: '' };
 const profile = (() => { try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch { return null; } })();
 if (!profile?.name || !Number.isInteger(profile.age) || profile.age < 18 || !localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(UNLOCK_KEY) !== 'true') location.replace('welcome.html');
-document.getElementById('lockBtn').onclick = () => { sessionStorage.removeItem(UNLOCK_KEY); location.replace('welcome.html'); };
+document.getElementById('lockBtn').onclick = () => { sessionStorage.removeItem(UNLOCK_KEY); sessionStorage.removeItem(MOOD_DONE_KEY); location.replace('welcome.html'); };
 document.getElementById('deleteDataBtn').onclick = async () => {
   const confirmed = window.confirm('Permanently delete your Daily Compass account, monthly AI usage record, profile, and every journal entry, mood, task, and check-in saved on this device? This cannot be undone.');
   if (!confirmed) return;
@@ -24,12 +28,15 @@ document.getElementById('deleteDataBtn').onclick = async () => {
   } catch { toast('Could not reach the server. Your account was not deleted. Try again when online.'); return; }
   localStorage.removeItem(PROFILE_KEY);
   localStorage.removeItem(KEY);
+  localStorage.removeItem(MOOD_CHECKINS_KEY);
   localStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem(UNLOCK_KEY);
+  sessionStorage.removeItem(MOOD_DONE_KEY);
   location.replace('welcome.html');
 };
 
 function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } }
+function loadMoodCheckins() { try { const value = JSON.parse(localStorage.getItem(MOOD_CHECKINS_KEY) || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; } }
 function save() { localStorage.setItem(KEY, JSON.stringify(entries)); }
 function updatePlanCard() {
   const limit = planState.tier === 'plus' ? PLUS_AI_LIMIT : FREE_AI_LIMIT;
@@ -40,6 +47,43 @@ function today() { return toDateInput(new Date()); }
 function toDateInput(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function dateFromInput(value) { return new Date(`${value}T12:00:00`); }
 function prettyDate(value) { return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(dateFromInput(value)); }
+const moodOptions = ['😊 Happy','✨ Excited','🌿 Calm','🙏 Grateful','💪 Motivated','🎯 Focused','🥰 Loved','🌈 Hopeful','🏆 Proud','😌 Content','😐 Okay','😟 Anxious','😣 Overwhelmed','😢 Sad','😤 Frustrated','🫥 Lonely','😴 Tired','😵‍💫 Restless','😞 Discouraged','🪫 Low energy'];
+const moodGlows = ['#ffbf69','#ff9f75','#64d6b0','#f4cb67','#65d9c2','#66aaff','#f18fca','#88d99a','#ffd36a','#a5d998','#9aaac0','#9d91ff','#f28fa2','#86aaff','#ff967e','#b79bf0','#82b3d6','#ffad79','#8f9ad0','#8ab3c0'];
+const dailyQuotes = ['Small steps still count as movement.','You can begin again without starting over.','Make room for what gives you energy.','Progress can be quiet and still be real.','A little clarity can change the shape of a day.','You are allowed to move at a human pace.','Notice what is working, then build from there.','Rest can be part of the path forward.'];
+function showTodayMood() { const mood = moodCheckins[today()]; document.getElementById('todayMood').textContent = mood ? `Today’s mood · ${mood}` : ''; }
+function initMoodGate() {
+  const gate = document.getElementById('moodGate'), rail = document.getElementById('moodChoices'), continueButton = document.getElementById('continueMood'), hint = document.getElementById('moodSelectionHint');
+  rail.innerHTML = moodOptions.map((mood, index) => { const firstSpace = mood.indexOf(' '); const emoji = mood.slice(0, firstSpace); const name = mood.slice(firstSpace + 1); return `<button class="mood-option" type="button" data-mood="${mood}" aria-label="${mood}" aria-pressed="false" style="--mood-glow:${moodGlows[index]}"><span class="mood-check" aria-hidden="true">✓</span><span class="mood-emoji" aria-hidden="true">${emoji}</span><span class="mood-name">${name}</span></button>`; }).join('');
+  const shell = document.querySelector('.shell');
+  if (sessionStorage.getItem(MOOD_DONE_KEY) === 'true') { gate.hidden = true; shell.inert = false; showTodayMood(); return; }
+  shell.inert = true;
+  rail.querySelectorAll('.mood-option').forEach(option => option.addEventListener('click', () => {
+    selectedMood = option.dataset.mood;
+    rail.querySelectorAll('.mood-option').forEach(button => button.setAttribute('aria-pressed', String(button === option)));
+    hint.innerHTML = `You’re feeling <strong>${selectedMood}</strong>`;
+    continueButton.disabled = false;
+  }));
+  const scrollMoods = direction => rail.scrollBy({ left: direction * Math.max(200, rail.clientWidth * 0.78), behavior: 'smooth' });
+  document.getElementById('moodPrev').onclick = () => scrollMoods(-1);
+  document.getElementById('moodNext').onclick = () => scrollMoods(1);
+  rail.addEventListener('keydown', event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); scrollMoods(event.key === 'ArrowLeft' ? -1 : 1); } });
+  continueButton.onclick = () => {
+    if (!selectedMood) return;
+    continueButton.disabled = true;
+    moodCheckins[today()] = selectedMood;
+    localStorage.setItem(MOOD_CHECKINS_KEY, JSON.stringify(moodCheckins));
+    sessionStorage.setItem(MOOD_DONE_KEY, 'true');
+    showTodayMood();
+    const moodDialog = gate.querySelector('.mood-dialog'), quote = document.getElementById('quoteTransition'), quoteText = document.getElementById('dailyQuoteText'), quoteAuthor = document.getElementById('dailyQuoteAuthor');
+    const now = new Date(), dayNumber = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(now.getFullYear(), 0, 0)) / 86_400_000);
+    quoteText.textContent = dailyQuotes[(dayNumber + now.getFullYear()) % dailyQuotes.length]; quoteAuthor.textContent = 'A Daily Compass reminder';
+    moodDialog.hidden = true; quote.hidden = false; gate.setAttribute('aria-labelledby', 'dailyQuoteText'); gate.removeAttribute('aria-describedby');
+    requestAnimationFrame(() => quote.classList.add('visible'));
+    setTimeout(() => { quote.classList.add('leaving'); gate.classList.add('leaving'); }, 2500);
+    setTimeout(() => { gate.hidden = true; shell.inert = false; shell.classList.add('entering'); document.getElementById('entryText').focus({ preventScroll: true }); setTimeout(() => shell.classList.remove('entering'), 700); }, 3200);
+  };
+  requestAnimationFrame(() => rail.querySelector('.mood-option')?.focus({ preventScroll: true }));
+}
 document.querySelector('.hero p').textContent = `Hi, ${profile?.name?.split(/\s+/)[0] || 'there'}. Capture what matters. Find your next small step.`;
 const icons = { Journal: '✍️', Tasks: '✓', Health: '☘️' };
 document.querySelectorAll('.cat').forEach(b => b.addEventListener('click', () => {
@@ -220,6 +264,7 @@ async function refreshReflection() {
 document.getElementById('refreshBtn').onclick = refreshReflection;
 document.getElementById('refreshBtn').textContent = 'Refresh my reflection & nudge';
 updatePlanCard();
+initMoodGate();
 const musicTracks = {
   'quiet-piano': { kind: 'piano', notes: [392, 523.25, 659.25, 523.25, 440, 587.33, 698.46, 587.33, 392, 493.88, 587.33, null], wave: 'sine', interval: 920 },
   'blue-hour': { kind: 'pad', chords: [[130.81, 196, 261.63], [110, 164.81, 220], [123.47, 185, 246.94], [98, 146.83, 196]], wave: 'sine', interval: 6200 },
