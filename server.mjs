@@ -372,7 +372,7 @@ async function handleApi(req, res, url, cors) {
         const body = await readJson(req, 12_000);
         const actual = await passwordDigest(String(body.password || ''), auth.user.passwordSalt);
         if (!verifyDigest(actual, auth.user.passwordHash)) { sendJson(res, 401, { error: 'The password did not match. Account deletion was cancelled.' }, cors); return true; }
-        await mutateDatabase(db => { db.users = db.users.filter(item => item.id !== auth.user.id); for (const item of db.users) { item.social ||= { friends: [], requests: [], posts: [], blocks: [], reports: [] }; item.social.friends = (item.social.friends || []).filter(id => id !== auth.user.id); item.social.requests = (item.social.requests || []).filter(id => id !== auth.user.id); item.social.blocks = (item.social.blocks || []).filter(id => id !== auth.user.id); } });
+        await mutateDatabase(db => { db.users = db.users.filter(item => item.id !== auth.user.id); for (const item of db.users) { item.social ||= { friends: [], requests: [], posts: [], blocks: [], reports: [] }; item.social.friends = (item.social.friends || []).filter(id => id !== auth.user.id); item.social.requests = (item.social.requests || []).filter(id => id !== auth.user.id); item.social.blocks = (item.social.blocks || []).filter(id => id !== auth.user.id); item.social.posts = (item.social.posts || []).map(post => ({ ...post, comments: (post.comments || []).filter(comment => comment.author?.id !== auth.user.id), reactions: Object.fromEntries(Object.entries(post.reactions || {}).filter(([userId]) => userId !== auth.user.id)) })); } });
         sendJson(res, 200, { ok: true }, cors);
       } catch {
         sendJson(res, 400, { error: 'Could not delete the account. Please try again.' }, cors);
