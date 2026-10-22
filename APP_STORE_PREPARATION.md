@@ -2,18 +2,17 @@
 
 Prepared October 22, 2026. Version 1.2.1, initial iOS build 1.
 
-**Status: source prepared; not yet ready to submit to Apple.** There is no signed iOS app yet. The App Store Connect draft has been created: https://appstoreconnect.apple.com/apps/6825649471/distribution The Android release and live web deployment have not been changed by this preparation. Work is on the local `ios-app-store-prep` branch.
+**Status: source prepared; not yet ready to submit to Apple.** Version 1.2.1 build 1 has been signed, archived, exported, and uploaded to App Store Connect successfully. The App Store Connect draft has been created: https://appstoreconnect.apple.com/apps/6825649471/distribution The Android release and live web deployment have not been changed by this preparation. Work is on the local `ios-app-store-prep` branch.
 
-## Your next two steps
+## Current setup
 
-1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/enroll/). Apple lists membership at US$99 per year (or local currency). Choose individual or organization based on who should own and publish the app. Complete identity checks, agreements, and payment yourself. Do not send Apple passwords or verification codes in chat.
-2. Arrange access to a Mac with Xcode 26 or later. It may be your own or borrowed Mac; owning one is not required. Cloud Mac access is another option to evaluate once you choose a build workflow. This Windows computer cannot compile, sign, or run an iOS simulator build.
+Apple Developer membership is active. Builds use GitHub’s cloud Mac with Xcode 26.2, so a personal Mac is not required. The total authorized cloud-build budget is US$5. Signing credentials are encrypted GitHub secrets; retain a secure personal backup of the one-time-download API key.
 
 Apple's current [upload requirements](https://developer.apple.com/news/upcoming-requirements/?id=04282026a) require Xcode 26+ with an iOS 26+ SDK. The project's [Capacitor 8 toolchain](https://capacitorjs.com/docs/getting-started/environment-setup) also requires Xcode 26+.
 
 ## Prepared source
 
-- Bundle ID aligned with Capacitor: `com.kevthedev.dailycompass.mobile` (availability still needs confirmation in your Apple account).
+- Bundle ID aligned with Capacitor: `com.kevthedev.dailycompass.mobile` (registered in your Apple account).
 - Marketing version 1.2.1 and iOS build 1.
 - Current home design, bottom navigation, and removed music player copied into the iOS web assets.
 - Swift Package Manager wiring synchronized for health, local notifications, push notifications, and native purchases.
@@ -22,9 +21,9 @@ Apple's current [upload requirements](https://developer.apple.com/news/upcoming-
 - `npm run ios`, `npm run ios:open`, and `npm run ios:check` added.
 - `scripts/prepare-ios-on-mac.sh` installs dependencies, synchronizes iOS, runs static checks, and opens Xcode. It does not submit a release.
 
-Passed: Capacitor iOS synchronization, Xcode project syntax parsing, permission/entitlement checks, plugin wiring, matching bundle IDs, version settings, and icon dimensions/opacity. **Now passed:** Xcode 26.2 Swift compilation and iPhone simulator launch. **Not run:** distribution signing, physical-device feature tests, StoreKit sandbox tests, or TestFlight.
+Passed: Capacitor iOS synchronization, Xcode project syntax parsing, permission/entitlement checks, plugin wiring, matching bundle IDs, version settings, and icon dimensions/opacity. **Now passed:** Xcode 26.2 Swift compilation and iPhone simulator launch. **Now passed:** distribution signing, archive/export, and App Store Connect upload. **Not run:** physical-device feature tests or StoreKit sandbox tests. Apple processing and TestFlight configuration remain.
 
-## Engineering blockers before TestFlight/App Review
+## Engineering blockers before public release
 
 ### Apple purchases
 
@@ -97,7 +96,7 @@ You do not have to buy a Mac. A manual GitHub Actions workflow is included at `.
 
 Once installed on the repository's default branch, use GitHub → Actions → iOS simulator build (manual) → Run workflow. It installs locked dependencies, synchronizes the iOS project, and attempts an unsigned simulator build. No Apple membership or signing secrets are required for that compilation check. Its simulator artifact cannot be installed on an iPhone or uploaded to the App Store.
 
-For the later signed release, configure Apple distribution signing and an App Store Connect upload workflow after enrollment. Store signing material as repository secrets, never in the repository or chat. A signed cloud build can then be uploaded to TestFlight for physical-iPhone testing. That signing/upload path is not implemented in this preparation workflow.
+For the later signed release, configure Apple distribution signing and an App Store Connect upload workflow after enrollment. Store signing material as repository secrets, never in the repository or chat. A signed cloud build can then be uploaded to TestFlight for physical-iPhone testing. The separate manual `ios-testflight.yml` workflow now installs encrypted signing secrets, archives, exports, and uploads to App Store Connect.
 
 Standard public-repository runners are free; private-repository builds use included minutes and may incur charges after the allowance is exhausted. Check [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions) before running. Two successful cloud runs used about five rounded billable minutes, approximately US$0.31 at the listed US$0.062/minute rate before any included allowance. The authorized total budget is US$5; track future runs against that total.
 
@@ -120,12 +119,19 @@ The source archive contains no Apple credentials, Android upload key, Firebase s
 
 - Apple Developer membership verified active October 22, 2026.
 - Apple Team ID: Z9BXH892FC, now connected in the Xcode project.
-- Bundle ID registered: com.kevthedev.dailycompass.mobile. HealthKit provisioning capability still needs to match the app entitlement before device signing.
+- Bundle ID registered: com.kevthedev.dailycompass.mobile. HealthKit capability enabled and App Store distribution profile generated.
 - Apple app ID: 6825649471.
 - Store name: Daily Compass: Journal & Tasks (the shorter name was already taken).
 - Draft version: 1.2.1; Lifestyle primary, Productivity secondary.
 - Public support page: https://daily-compass-api.onrender.com/support.html
 - Compile run: https://github.com/kevojiujitsu/daily-compass/actions/runs/39730031175 — successful.
 - Compile and iPhone launch run: https://github.com/kevojiujitsu/daily-compass/actions/runs/39730302094 — successful.
-- App Store Connect API access is not enabled yet. No Apple upload key, distribution certificate, or provisioning profile has been created. Approval is needed before creating persistent signing/upload credentials and storing them as encrypted repository secrets.
+- App Store Connect API access enabled with explicit agreement approval. A Developer-role upload key, Apple Distribution certificate, and App Store profile are created. Six credential values are stored as encrypted GitHub repository secrets. No private key contents are included in this package.
+- Signed build workflow: `.github/workflows/ios-testflight.yml`, manual-only, 30-minute timeout. Successful signed build and upload: https://github.com/kevojiujitsu/daily-compass/actions/runs/39733160938 . Workflow signing settings are scoped to the App target.
 - The remaining engineering blockers above still apply. The simulator welcome-screen screenshot demonstrates launch, not end-to-end feature testing or App Review readiness.
+
+## Signed upload result
+
+October 22, 2026: Apple uploader confirmed “UPLOAD SUCCEEDED with no errors” for version 1.2.1 build 1. Delivery UUID: 10c3b0f5-894c-4f8e-8ac0-6199e6be92d5. This confirms transport acceptance, not App Review approval. The signed IPA is saved separately. App Review contact details were saved in App Store Connect.
+
+Five total cloud runs used approximately nine rounded minutes, at most US$0.558 before included allowances and minimal artifact storage. The authorized budget remains US$5.
