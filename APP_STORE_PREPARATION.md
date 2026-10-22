@@ -1,12 +1,14 @@
+**Device testing is ready:** TestFlight build 1.2.1 (2) is processed with no missing-encryption-compliance block and assigned to the internal group “Daily Compass Device Testing.” The owner Apple account is invited. Install TestFlight on the iPad and accept the invitation to begin. Public App Review has not been submitted.
+
 ## Latest progress — October 22, 2026
 
-Build 2 is prepared with iPhone/iPad Apple purchase UI, signed transaction verification using Apple’s official server library and root certificates, renewal/refund notifications, per-request AI consent, iOS local reminders, Apple Health labels and heart-rate response parsing, a privacy manifest, and updated privacy disclosures. The unused crypto-js dependency is removed from mobile assets; the app uses platform encryption and declares no non-exempt encryption in Info.plist.
+Build 2 was signed and uploaded successfully (run 39777590352) with iPhone/iPad Apple purchase UI, signed transaction verification using Apple’s official server library and root certificates, renewal/refund notifications, per-request AI consent, iOS local reminders, Apple Health labels and heart-rate response parsing, a privacy manifest, and updated privacy disclosures. The unused crypto-js dependency is removed from mobile assets; the app uses platform encryption and declares no non-exempt encryption in Info.plist.
 
 Compass Plus product `compass_plus_monthly` (Apple ID 6825659732), group 22502959, is created for one month at US$1.99 with Apple’s regional equivalents and all 175 supported storefronts selected. English display text is saved. The Paid Apps Agreement is still New and EU trader compliance is incomplete. The owner must finish the agreement, tax/banking and trader requirements. Purchases remain disabled by the backend until setup is ready.
 
 Passed: Apple purchase business-rule and forged-signature tests, actual local API authorization/rejection tests, existing notification tests, browser integration tests at iPhone 390×844 and iPad 820×1180 with mocked native plugins, Capacitor sync and static iOS checks. Browser test screenshots are fixtures, not native App Store screenshots. Real StoreKit sandbox, refund/renewal delivery and physical-device testing remain.
 
-Configure Render `APPLE_BILLING_ENABLED=true` only after the product/account setup is ready, and `APPLE_SANDBOX_EMAILS` for the actual Daily Compass tester account emails. In App Store Connect App Information, set production and sandbox Server Notifications V2 URL to `https://daily-compass-api.onrender.com/api/billing/apple/notifications`. No signing/upload key is needed by this endpoint; it verifies Apple signatures. Family Sharing is off and billing grace period is not enabled.
+Configure Render `APPLE_BILLING_ENABLED=true` only after the product/account setup is ready, and `APPLE_SANDBOX_EMAILS` for the actual Daily Compass tester account emails. Both production and sandbox server notification URLs are saved in App Store Connect as `https://daily-compass-api.onrender.com/api/billing/apple/notifications`. No signing/upload key is needed by this endpoint; it verifies Apple signatures. Family Sharing is off and billing grace period is not enabled.
 
 Other public-release work: final App Privacy and age-rating declarations, reviewer sign-in account, authentic iPhone/iPad screenshots, community content-filtering audit, account recovery, and device validation. Do not submit for App Review until these are complete.
 
@@ -151,3 +153,5 @@ October 22, 2026: Apple uploader confirmed “UPLOAD SUCCEEDED with no errors”
 Five total cloud runs used approximately nine rounded minutes, at most US$0.558 before included allowances and minimal artifact storage. The authorized budget remains US$5.
 
 Apple processing completed. TestFlight now lists build 1 with “Missing Compliance”; the encryption declaration has not been submitted. Audit the unused bundled crypto-js file and third-party SDKs before choosing the declaration. Public release still requires iPhone feature work, device testing, privacy/age-rating answers, screenshots, and review credentials.
+
+Updated cloud total: six runs, approximately eleven rounded minutes, at most US$0.682 before included allowances and minimal artifact storage. Build 2 upload delivery ID b68d7fc9-441c-4b1f-a5d3-f06f5ead46f0. Live service health, privacy page update, and invalid callback rejection were verified after deployment.
