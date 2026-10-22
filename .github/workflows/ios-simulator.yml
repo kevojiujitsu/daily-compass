@@ -1,0 +1,67 @@
+name: iOS simulator build (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-preparation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Confirm Xcode and iOS SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Install locked dependencies
+        run: |
+          npm install --global pnpm@10.20.0
+          pnpm install --frozen-lockfile
+      - name: Prepare iOS assets and plugins
+        run: npm run ios
+      - name: Validate prepared configuration
+        run: npm run ios:check
+      - name: Build unsigned iOS simulator app
+        shell: bash
+        run: |
+          mkdir -p work
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath work/ios-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee work/ios-build.log
+      - name: Package simulator app
+        run: ditto -c -k --sequesterRsrc --keepParent work/ios-derived/Build/Products/Debug-iphonesimulator/App.app work/DailyCompass-simulator.zip
+      - name: Save simulator build
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-ios-simulator
+          path: work/DailyCompass-simulator.zip
+          retention-days: 3
+          if-no-files-found: error
+      - name: Save build log
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-ios-build-log
+          path: work/ios-build.log
+          retention-days: 3
+          if-no-files-found: ignore

@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const text=async file=>readFile(new URL('../'+file,import.meta.url),'utf8');
+const project=await text('ios/App/App.xcodeproj/project.pbxproj');
+const config=JSON.parse(await text('capacitor.config.json'));
+assert.equal((project.match(new RegExp('PRODUCT_BUNDLE_IDENTIFIER = '+config.appId.replaceAll('.','\\.')+';', 'g'))||[]).length,2,'Both iOS configurations must use the Capacitor app ID');
+assert.equal((project.match(/CODE_SIGN_ENTITLEMENTS = App\/App.entitlements;/g)||[]).length,2);
+assert.equal((project.match(/MARKETING_VERSION = 1.2.1;/g)||[]).length,2);
+const info=await text('ios/App/App/Info.plist');
+for(const key of ['NSHealthShareUsageDescription','NSHealthUpdateUsageDescription','NSCameraUsageDescription','NSPhotoLibraryUsageDescription'])assert.ok(info.includes('<key>'+key+'</key>'),key+' is missing');
+const entitlements=await text('ios/App/App/App.entitlements');assert.ok(entitlements.includes('com.apple.developer.healthkit'));
+const dependencies=await text('ios/App/CapApp-SPM/Package.swift');
+for(const plugin of ['CapacitorHealthFitness','CapacitorLocalNotifications','CapacitorPushNotifications','CapgoNativePurchases'])assert.ok(dependencies.includes(plugin),plugin+' is missing from Swift packages');
+const icon=await readFile(new URL('../ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png',import.meta.url));
+assert.equal(icon.readUInt32BE(16),1024);assert.equal(icon.readUInt32BE(20),1024);assert.ok([0,2].includes(icon[25]),'App icon must be opaque');
+console.log('PASS: iOS identifiers, version, entitlements, permission descriptions, Swift package wiring, and opaque 1024px icon.');
+console.log('Preparation checks only. App Store submission is still blocked by Apple membership, Xcode build/device tests, Apple billing, iOS notification/health flows, privacy disclosures/AI consent, and review materials.');

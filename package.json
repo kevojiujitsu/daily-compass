@@ -7,7 +7,10 @@
     "start": "node server.mjs",
     "build": "node build.mjs",
     "android": "node build.mjs && npx cap sync android",
-    "test:notifications": "node tests/notifications.test.mjs"
+    "test:notifications": "node tests/notifications.test.mjs",
+    "ios": "node build.mjs && npx cap sync ios",
+    "ios:open": "npx cap open ios",
+    "ios:check": "node scripts/verify-ios-preparation.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0"
