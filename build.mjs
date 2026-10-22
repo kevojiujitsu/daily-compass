@@ -20,6 +20,7 @@ await copyFile('app-config.js', resolve(out, 'app-config.js'));
 await copyFile('welcome.html', resolve(out, 'welcome.html'));
 await copyFile('crypto-js.js', resolve(out, 'crypto-js.js'));
 await copyFile('privacy.html', resolve(out, 'privacy.html'));
+await copyFile('support.html', resolve(out, 'support.html'));
 await copyFile('delete-account.html', resolve(out, 'delete-account.html'));
 await copyFile('app.js', resolve(out, 'app.js'));
 console.log(`Web and mobile app prepared in ${out}${apiBase ? ` using AI service ${apiBase}` : ' (set DAILY_COMPASS_API_BASE for native AI)'}.`);

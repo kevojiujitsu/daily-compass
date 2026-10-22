@@ -37,6 +37,7 @@ const files = {
   '/welcome.html': ['welcome.html', 'text/html; charset=utf-8'],
   '/crypto-js.js': ['crypto-js.js', 'text/javascript; charset=utf-8'],
   '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'],
+  '/support.html': ['support.html', 'text/html; charset=utf-8'],
   '/delete-account.html': ['delete-account.html', 'text/html; charset=utf-8']
 };
 let database = { users: [] };
