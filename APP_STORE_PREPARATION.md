@@ -2,7 +2,7 @@
 
 Prepared October 22, 2026. Version 1.2.1, initial iOS build 1.
 
-**Status: source prepared; not yet ready to submit to Apple.** There is no signed iOS app or App Store Connect listing yet. The Android release and live web deployment have not been changed by this preparation. Work is on the local `ios-app-store-prep` branch.
+**Status: source prepared; not yet ready to submit to Apple.** There is no signed iOS app yet. The App Store Connect draft has been created: https://appstoreconnect.apple.com/apps/6825649471/distribution The Android release and live web deployment have not been changed by this preparation. Work is on the local `ios-app-store-prep` branch.
 
 ## Your next two steps
 
@@ -22,7 +22,7 @@ Apple's current [upload requirements](https://developer.apple.com/news/upcoming-
 - `npm run ios`, `npm run ios:open`, and `npm run ios:check` added.
 - `scripts/prepare-ios-on-mac.sh` installs dependencies, synchronizes iOS, runs static checks, and opens Xcode. It does not submit a release.
 
-Passed: Capacitor iOS synchronization, Xcode project syntax parsing, permission/entitlement checks, plugin wiring, matching bundle IDs, version settings, and icon dimensions/opacity. **Not run:** Swift compilation, signing, simulator/device tests, StoreKit sandbox tests, or TestFlight.
+Passed: Capacitor iOS synchronization, Xcode project syntax parsing, permission/entitlement checks, plugin wiring, matching bundle IDs, version settings, and icon dimensions/opacity. **Now passed:** Xcode 26.2 Swift compilation and iPhone simulator launch. **Not run:** distribution signing, physical-device feature tests, StoreKit sandbox tests, or TestFlight.
 
 ## Engineering blockers before TestFlight/App Review
 
@@ -93,13 +93,13 @@ Existing public support contact: kwjiujitsu@gmail.com — confirm this remains t
 
 ## Work from Windows with a cloud Mac
 
-You do not have to buy a Mac. A manual GitHub Actions workflow is included at `.github/workflows/ios-simulator.yml`. GitHub provides macOS runners with Xcode; [runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). The workflow has not been run or pushed and does not run automatically on commits.
+You do not have to buy a Mac. A manual GitHub Actions workflow is included at `.github/workflows/ios-simulator.yml`. GitHub provides macOS runners with Xcode; [runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). The workflow is installed on the default branch and remains manual-only. Cloud compilation and an iPhone simulator launch have passed.
 
 Once installed on the repository's default branch, use GitHub → Actions → iOS simulator build (manual) → Run workflow. It installs locked dependencies, synchronizes the iOS project, and attempts an unsigned simulator build. No Apple membership or signing secrets are required for that compilation check. Its simulator artifact cannot be installed on an iPhone or uploaded to the App Store.
 
 For the later signed release, configure Apple distribution signing and an App Store Connect upload workflow after enrollment. Store signing material as repository secrets, never in the repository or chat. A signed cloud build can then be uploaded to TestFlight for physical-iPhone testing. That signing/upload path is not implemented in this preparation workflow.
 
-Standard public-repository runners are free; private-repository builds use included minutes and may incur charges after the allowance is exhausted. Check [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions) before running. No cloud minutes have been started by this preparation.
+Standard public-repository runners are free; private-repository builds use included minutes and may incur charges after the allowance is exhausted. Check [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions) before running. Two successful cloud runs used about five rounded billable minutes, approximately US$0.31 at the listed US$0.062/minute rate before any included allowance. The authorized total budget is US$5; track future runs against that total.
 
 ## Mac build handoff
 
@@ -115,3 +115,17 @@ Standard public-repository runners are free; private-repository builds use inclu
 10. Select a tested build, associate any first subscriptions, and submit for App Review. Apple approval is required before public release.
 
 The source archive contains no Apple credentials, Android upload key, Firebase service-account secrets, or local account database. It is a preparation package, not an installable `.ipa`.
+
+## Activated account and current handoff
+
+- Apple Developer membership verified active October 22, 2026.
+- Apple Team ID: Z9BXH892FC, now connected in the Xcode project.
+- Bundle ID registered: com.kevthedev.dailycompass.mobile. HealthKit provisioning capability still needs to match the app entitlement before device signing.
+- Apple app ID: 6825649471.
+- Store name: Daily Compass: Journal & Tasks (the shorter name was already taken).
+- Draft version: 1.2.1; Lifestyle primary, Productivity secondary.
+- Public support page: https://daily-compass-api.onrender.com/support.html
+- Compile run: https://github.com/kevojiujitsu/daily-compass/actions/runs/39730031175 — successful.
+- Compile and iPhone launch run: https://github.com/kevojiujitsu/daily-compass/actions/runs/39730302094 — successful.
+- App Store Connect API access is not enabled yet. No Apple upload key, distribution certificate, or provisioning profile has been created. Approval is needed before creating persistent signing/upload credentials and storing them as encrypted repository secrets.
+- The remaining engineering blockers above still apply. The simulator welcome-screen screenshot demonstrates launch, not end-to-end feature testing or App Review readiness.
