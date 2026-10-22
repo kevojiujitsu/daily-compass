@@ -156,13 +156,13 @@ function prettyDate(value) { return new Intl.DateTimeFormat(undefined, { weekday
 const moodOptions = ['😊 Happy','✨ Excited','🌿 Calm','🙏 Grateful','💪 Motivated','🎯 Focused','🥰 Loved','🌈 Hopeful','🏆 Proud','😌 Content','😐 Okay','😟 Anxious','😣 Overwhelmed','😢 Sad','😤 Frustrated','🫥 Lonely','😴 Tired','😵‍💫 Restless','😞 Discouraged','🪫 Low energy'];
 const moodGlows = ['#ffbf69','#ff9f75','#64d6b0','#f4cb67','#65d9c2','#66aaff','#f18fca','#88d99a','#ffd36a','#a5d998','#9aaac0','#9d91ff','#f28fa2','#86aaff','#ff967e','#b79bf0','#82b3d6','#ffad79','#8f9ad0','#8ab3c0'];
 const dailyQuotes = ['Small steps still count as movement.','You can begin again without starting over.','Make room for what gives you energy.','Progress can be quiet and still be real.','A little clarity can change the shape of a day.','You are allowed to move at a human pace.','Notice what is working, then build from there.','Rest can be part of the path forward.'];
-function showTodayMood() { const mood = moodCheckins[today()]; document.getElementById('todayMood').textContent = mood ? `Today’s mood · ${mood}` : ''; }
+function showTodayMood() { const mood = moodCheckins[today()]; document.getElementById('todayMood').textContent = mood ? `Feeling ${mood}` : 'Your daily mood'; }
 function initMoodGate() {
   const gate = document.getElementById('moodGate'), rail = document.getElementById('moodChoices'), continueButton = document.getElementById('continueMood'), hint = document.getElementById('moodSelectionHint');
   rail.innerHTML = moodOptions.map((mood, index) => { const firstSpace = mood.indexOf(' '); const emoji = mood.slice(0, firstSpace); const name = mood.slice(firstSpace + 1); return `<button class="mood-option" type="button" data-mood="${mood}" aria-label="${mood}" aria-pressed="false" style="--mood-glow:${moodGlows[index]}"><span class="mood-check" aria-hidden="true">✓</span><span class="mood-emoji" aria-hidden="true">${emoji}</span><span class="mood-name">${name}</span></button>`; }).join('');
   const shell = document.querySelector('.shell');
-  if (sessionStorage.getItem(MOOD_DONE_KEY) === 'true') { gate.hidden = true; shell.inert = false; showTodayMood(); return; }
-  shell.inert = true;
+  const moodAlreadyDone = sessionStorage.getItem(MOOD_DONE_KEY) === 'true';
+  gate.hidden = moodAlreadyDone; shell.inert = !moodAlreadyDone; showTodayMood();
   rail.querySelectorAll('.mood-option').forEach(option => option.addEventListener('click', () => {
     selectedMood = option.dataset.mood;
     rail.querySelectorAll('.mood-option').forEach(button => button.setAttribute('aria-pressed', String(button === option)));
@@ -188,9 +188,9 @@ function initMoodGate() {
     setTimeout(() => { quote.classList.add('leaving'); gate.classList.add('leaving'); }, 2500);
     setTimeout(() => { gate.hidden = true; shell.inert = false; shell.classList.add('entering'); document.getElementById('entryText').focus({ preventScroll: true }); setTimeout(() => shell.classList.remove('entering'), 700); }, 3200);
   };
-  requestAnimationFrame(() => rail.querySelector('.mood-option')?.focus({ preventScroll: true }));
+  if (!moodAlreadyDone) requestAnimationFrame(() => rail.querySelector('.mood-option')?.focus({ preventScroll: true }));
 }
-document.querySelector('.hero p').textContent = `Hi, ${profile?.name?.split(/\s+/)[0] || 'there'}. Start with what matters.`;
+
 document.querySelectorAll('.nav-tab').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
 function showPage(name) {
   document.querySelectorAll('.nav-tab').forEach(button => { const active = button.dataset.page === name; button.classList.toggle('active', active); if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); });
@@ -200,7 +200,9 @@ function showPage(name) {
 }
 const plusDialog = document.getElementById('plusDialog');
 function openPlusDialog() { plusDialog.showModal(); loadPlusProduct(); }
-document.getElementById('topPlusBtn').onclick = openPlusDialog;
+document.getElementById('topPlusBtn').onclick = () => { document.getElementById('profileDialog').close(); openPlusDialog(); };
+document.getElementById('profileBtn').onclick = () => { document.getElementById('profileName').textContent = profile?.name || 'Your profile'; document.getElementById('profileEmail').textContent = profile?.email || ''; document.getElementById('profileDialog').showModal(); };
+document.getElementById('changeMoodBtn').onclick = () => { const gate = document.getElementById('moodGate'); gate.querySelector('.mood-dialog').hidden = false; const quote = document.getElementById('quoteTransition'); quote.hidden = true; quote.classList.remove('visible','leaving'); gate.classList.remove('leaving'); gate.setAttribute('aria-labelledby','moodGateTitle'); gate.setAttribute('aria-describedby','moodGateIntro'); gate.hidden = false; document.querySelector('.shell').inert = true; selectedMood = ''; document.getElementById('continueMood').disabled = true; document.getElementById('moodSelectionHint').textContent = 'Select a mood to continue.'; document.querySelectorAll('.mood-option').forEach(button => button.setAttribute('aria-pressed','false')); document.querySelector('.mood-option')?.focus(); };
 document.getElementById('buyPlusBtn').onclick = async event => {
   const button = event.currentTarget;
   if (!plusStoreProduct || !nativePurchases) { await loadPlusProduct(); return; }
@@ -293,10 +295,21 @@ async function socialRequest(body) {
   return data.result;
 }
 async function socialGet() {
-  const response = await fetch(apiUrl('/api/social'), { headers: { Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` } });
-  let data; try { data = await response.json(); } catch { throw new Error('Could not read the community feed.'); }
-  if (!response.ok) throw new Error(data.error || 'Could not load community.');
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(apiUrl('/api/social'), { headers: { Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` }, signal: controller.signal });
+    let data; try { data = await response.json(); } catch { throw new Error('Your community is temporarily unavailable. Please try again.'); }
+    if (!response.ok) {
+      const error = new Error(response.status === 401 ? 'Please sign in again to open your community.' : data.error || 'Could not load your community. Please try again.');
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError' || error instanceof TypeError) throw new Error('Could not reach your community. Check your connection and try again.');
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 async function loadModeration() {
   const panel = document.getElementById('moderationPanel');
@@ -349,7 +362,10 @@ async function loadSocial() {
     document.getElementById('blockedList').innerHTML = data.blocked.length ? data.blocked.map(p => socialPerson(p, 'Unblock', 'unblock')).join('') : '<div class="social-empty">No one is blocked.</div>';
     feed.innerHTML = data.posts.length ? data.posts.map(post => renderSocialPost(post)).join('') : '<div class="social-empty">When you add friends, their moments will show up here.</div>';
     wireSocialActions();
-  } catch (error) { feed.innerHTML = `<div class="social-empty">${esc(error.message)}<br><button class="secondary-btn" onclick="document.getElementById('socialRefresh').click()">Try again</button></div>`; }
+  } catch (error) {
+    feed.innerHTML = `<div class="social-empty" role="status">${esc(error.message)}<br><button id="communityRetryBtn" class="secondary-btn" type="button">${error.status === 401 ? 'Sign in' : 'Try again'}</button></div>`;
+    document.getElementById('communityRetryBtn').onclick = error.status === 401 ? () => { sessionStorage.removeItem(UNLOCK_KEY); location.assign('welcome.html'); } : loadSocial;
+  }
 }
 const reactionOptions = ['❤️','👍','😕','😂','😠'];
 function renderSocialPost(post) {
@@ -601,100 +617,6 @@ document.getElementById('refreshBtn').onclick = refreshReflection;
 document.getElementById('refreshBtn').textContent = 'Refresh my reflection & nudge';
 updatePlanCard();
 initMoodGate();
-const musicTracks = {
-  'quiet-piano': { kind: 'piano', notes: [392, 523.25, 659.25, 523.25, 440, 587.33, 698.46, 587.33, 392, 493.88, 587.33, null], wave: 'sine', interval: 920 },
-  'blue-hour': { kind: 'pad', chords: [[130.81, 196, 261.63], [110, 164.81, 220], [123.47, 185, 246.94], [98, 146.83, 196]], wave: 'sine', interval: 6200 },
-  'ocean-drift': { kind: 'ocean', notes: [659.25, 783.99, 587.33, 880, 783.99, 523.25], wave: 'sine', interval: 4800, filter: 430 },
-  'soft-rain': { kind: 'rain', notes: [880, 1046.5, 783.99, 1174.66, 987.77, 1318.5], wave: 'sine', interval: 1050, filter: 3300 }
-};
-let musicContext, musicMaster, musicTimer, musicNodes = [], musicStep = 0, musicPlaying = false;
-function stopSoundscape() {
-  clearInterval(musicTimer); musicTimer = undefined;
-  musicNodes.forEach(node => { try { node.stop(); } catch {} }); musicNodes = [];
-}
-function playTone(frequency, track, strength = 1) {
-  if (!frequency) return;
-  const oscillator = musicContext.createOscillator();
-  const envelope = musicContext.createGain();
-  const now = musicContext.currentTime;
-  oscillator.type = track.wave;
-  oscillator.frequency.setValueAtTime(frequency, now);
-  envelope.gain.setValueAtTime(0.0001, now);
-  const piano = track.kind === 'piano';
-  const drop = track.kind === 'rain';
-  envelope.gain.exponentialRampToValueAtTime((piano ? 0.15 : drop ? 0.035 : 0.07) * strength, now + (piano ? 0.025 : 0.08));
-  envelope.gain.exponentialRampToValueAtTime(0.0001, now + (piano ? 2.7 : drop ? 1.4 : 3.4));
-  oscillator.connect(envelope); envelope.connect(musicMaster);
-  oscillator.onended = () => { musicNodes = musicNodes.filter(node => node !== oscillator); };
-  oscillator.start(now); oscillator.stop(now + (piano ? 2.8 : drop ? 1.5 : 3.5));
-  musicNodes.push(oscillator);
-}
-function playPad(chord, track) {
-  chord.forEach((frequency, index) => {
-    const oscillator = musicContext.createOscillator();
-    const envelope = musicContext.createGain();
-    const now = musicContext.currentTime;
-    oscillator.type = track.wave;
-    oscillator.frequency.value = frequency;
-    oscillator.detune.value = (index - 1) * 4;
-    envelope.gain.setValueAtTime(0.0001, now);
-    envelope.gain.exponentialRampToValueAtTime(0.055, now + 2.1);
-    envelope.gain.setValueAtTime(0.055, now + 3.5);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, now + track.interval / 1000 + 1.7);
-    oscillator.connect(envelope); envelope.connect(musicMaster);
-    oscillator.onended = () => { musicNodes = musicNodes.filter(node => node !== oscillator); };
-    oscillator.start(now); oscillator.stop(now + track.interval / 1000 + 1.8);
-    musicNodes.push(oscillator);
-  });
-}
-function addAmbientBed(track) {
-  if (!['ocean', 'rain'].includes(track.kind)) return;
-  const sampleRate = musicContext.sampleRate;
-  const buffer = musicContext.createBuffer(1, sampleRate * 3, sampleRate);
-  const samples = buffer.getChannelData(0);
-  for (let i = 0; i < samples.length; i++) samples[i] = (Math.random() * 2 - 1) * 0.35;
-  const source = musicContext.createBufferSource(); source.buffer = buffer; source.loop = true;
-  const low = musicContext.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = track.filter;
-  const high = musicContext.createBiquadFilter(); high.type = 'highpass'; high.frequency.value = track.kind === 'ocean' ? 70 : 220;
-  const bedGain = musicContext.createGain(); bedGain.gain.value = track.kind === 'ocean' ? 0.11 : 0.065;
-  source.connect(high); high.connect(low); low.connect(bedGain); bedGain.connect(musicMaster); source.start(); musicNodes.push(source);
-  if (track.kind === 'ocean') {
-    const swell = musicContext.createOscillator(), depth = musicContext.createGain();
-    swell.frequency.value = 0.075; depth.gain.value = 0.065; swell.connect(depth); depth.connect(bedGain.gain); swell.start(); musicNodes.push(swell);
-  }
-}
-async function startSoundscape() {
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) { toast('Audio playback is not supported in this browser.'); return; }
-  musicContext ||= new AudioContextClass();
-  await musicContext.resume();
-  if (!musicMaster) { musicMaster = musicContext.createGain(); musicMaster.connect(musicContext.destination); }
-  musicMaster.gain.value = Number(document.getElementById('musicVolume').value) / 100 * 0.22;
-  stopSoundscape();
-  const trackName = document.getElementById('musicTrack').value;
-  const track = musicTracks[trackName] || musicTracks['quiet-piano'];
-  addAmbientBed(track);
-  musicStep = 0;
-  const playNextSound = () => {
-    if (track.kind === 'pad') playPad(track.chords[musicStep % track.chords.length], track);
-    else if (track.kind === 'rain') { if (Math.random() > 0.25) playTone(track.notes[Math.floor(Math.random() * track.notes.length)], track, 0.7 + Math.random() * 0.5); }
-    else playTone(track.notes[musicStep % track.notes.length], track, track.kind === 'ocean' ? 0.55 : 1);
-    musicStep++;
-  };
-  playNextSound(); musicTimer = setInterval(playNextSound, track.interval);
-  musicPlaying = true;
-  const button = document.getElementById('musicToggle'); button.textContent = '■ Stop music'; button.classList.add('playing');
-}
-document.getElementById('musicToggle').onclick = async () => {
-  if (musicPlaying) {
-    stopSoundscape(); musicPlaying = false;
-    const button = document.getElementById('musicToggle'); button.textContent = '▶ Play music'; button.classList.remove('playing');
-  } else {
-    try { await startSoundscape(); } catch { toast('Could not start music. Please try again.'); }
-  }
-};
-document.getElementById('musicTrack').onchange = () => { if (musicPlaying) startSoundscape(); };
-document.getElementById('musicVolume').oninput = event => { if (musicMaster) musicMaster.gain.setTargetAtTime(Number(event.target.value) / 100 * 0.22, musicContext.currentTime, 0.08); };
 availability();
 renderCommunityProfile();
 loadQuota();
