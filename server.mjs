@@ -1,6 +1,7 @@
 import http from 'node:http';
+import { handleNotifications } from './push-service.mjs';
 import { networkInterfaces } from 'node:os';
-import { randomBytes, randomUUID, scrypt as scryptCallback, createHash, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, scrypt as scryptCallback, createHash, createSign, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -15,18 +16,28 @@ const dataDir = process.env.DAILY_COMPASS_DATA_DIR || path.join(root, 'data');
 const databaseFile = path.join(dataDir, 'accounts.json');
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const MONTHLY_LIMITS = { free: 10, plus: 30 };
+const PLAY_PACKAGE_ID = 'com.kevthedev.dailycompass.mobile';
+const PLAY_SUBSCRIPTION_ID = process.env.GOOGLE_PLAY_SUBSCRIPTION_ID || 'compass_plus';
+const PLAY_BASE_PLAN_ID = process.env.GOOGLE_PLAY_BASE_PLAN_ID || 'monthly';
+let googleAccessToken = null;
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,capacitor://localhost,https://localhost').split(',').map(value => value.trim()));
 const rateLimits = new Map();
 const files = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
+  '/notification-plan.js': ['notification-plan.js', 'text/javascript; charset=utf-8'],
+  '/notifications.js': ['notifications.js', 'text/javascript; charset=utf-8'],
+  '/local-notifications.js': ['node_modules/@capacitor/local-notifications/dist/plugin.js', 'text/javascript; charset=utf-8'],
+  '/push-notifications.js': ['node_modules/@capacitor/push-notifications/dist/plugin.js', 'text/javascript; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/capacitor.js': ['node_modules/@capacitor/core/dist/capacitor.js', 'text/javascript; charset=utf-8'],
   '/health-fitness.js': ['node_modules/@capacitor/health-fitness/dist/plugin.js', 'text/javascript; charset=utf-8'],
+  '/native-purchases.js': ['node_modules/@capgo/native-purchases/dist/plugin.js', 'text/javascript; charset=utf-8'],
   '/app-config.js': ['app-config.js', 'text/javascript; charset=utf-8'],
   '/welcome.html': ['welcome.html', 'text/html; charset=utf-8'],
   '/crypto-js.js': ['crypto-js.js', 'text/javascript; charset=utf-8'],
-  '/privacy.html': ['privacy.html', 'text/html; charset=utf-8']
+  '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'],
+  '/delete-account.html': ['delete-account.html', 'text/html; charset=utf-8']
 };
 let database = { users: [] };
 let writeQueue = Promise.resolve();
@@ -90,6 +101,58 @@ function currentPlan(user) {
   const tier = user.plan?.tier === 'plus' && Number(user.plan.expiresAt) > Date.now() ? 'plus' : 'free';
   const month = monthKey();
   return { tier, month, count: Number(user.usage?.[month] || 0), limit: MONTHLY_LIMITS[tier] };
+}
+function googlePlayCredentials() {
+  try {
+    const credentials = JSON.parse(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || 'null');
+    if (!credentials?.client_email || !credentials?.private_key) return null;
+    return credentials;
+  } catch { return null; }
+}
+async function getGooglePlayAccessToken() {
+  if (googleAccessToken && googleAccessToken.expiresAt > Date.now() + 60_000) return googleAccessToken.value;
+  const credentials = googlePlayCredentials();
+  if (!credentials) throw new Error('Google Play verification is not configured on the server.');
+  const now = Math.floor(Date.now() / 1000);
+  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const unsigned = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({ iss: credentials.client_email, scope: 'https://www.googleapis.com/auth/androidpublisher', aud: credentials.token_uri || 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 })}`;
+  const signer = createSign('RSA-SHA256'); signer.update(unsigned); signer.end();
+  const assertion = `${unsigned}.${signer.sign(credentials.private_key, 'base64url')}`;
+  const response = await fetch(credentials.token_uri || 'https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.access_token) throw new Error('Google Play authentication failed.');
+  googleAccessToken = { value: result.access_token, expiresAt: Date.now() + Number(result.expires_in || 3600) * 1000 };
+  return result.access_token;
+}
+async function playApi(path, options = {}) {
+  const token = await getGooglePlayAccessToken();
+  const response = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(PLAY_PACKAGE_ID)}/${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) } });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Google Play API request failed (${response.status}).`);
+  return result;
+}
+async function verifyPlaySubscription(userId, purchaseToken) {
+  if (!googlePlayCredentials()) throw new Error('Google Play purchase verification is not configured yet.');
+  if (typeof purchaseToken !== 'string' || purchaseToken.length < 20 || purchaseToken.length > 8000) throw new Error('The Google Play purchase token is invalid.');
+  const subscription = await playApi(`purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`);
+  const supportedStates = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', 'SUBSCRIPTION_STATE_CANCELED']);
+  const line = (subscription.lineItems || []).find(item => item.productId === PLAY_SUBSCRIPTION_ID && item.offerDetails?.basePlanId === PLAY_BASE_PLAN_ID);
+  const expiresAt = line?.expiryTime ? Date.parse(line.expiryTime) : 0;
+  const expectedAccountId = createHash('sha256').update(userId).digest('hex');
+  const purchaseAccountId = subscription.externalAccountIdentifiers?.obfuscatedExternalAccountId;
+  if ((purchaseAccountId && purchaseAccountId !== expectedAccountId) || !line || !supportedStates.has(subscription.subscriptionState) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error('Google Play did not confirm an active Compass Plus subscription for this account.');
+  const purchaseTokenHash = createHash('sha256').update(purchaseToken).digest('hex');
+  await mutateDatabase(db => {
+    const user = db.users.find(item => item.id === userId);
+    if (!user) throw new Error('Your account could not be found.');
+    const tokenHashes = new Set([...(user.plan?.purchaseTokenHashes || []), user.plan?.purchaseTokenHash, purchaseTokenHash, subscription.linkedPurchaseToken ? createHash('sha256').update(subscription.linkedPurchaseToken).digest('hex') : ''].filter(Boolean));
+    if (db.users.some(item => item.id !== userId && [...tokenHashes].some(hash => (item.plan?.purchaseTokenHashes || [item.plan?.purchaseTokenHash]).includes(hash)))) throw new Error('This Google Play subscription is already linked to another Daily Compass account.');
+    user.plan = { tier: 'plus', expiresAt, purchaseTokenHash, purchaseTokenHashes: [...tokenHashes], productId: PLAY_SUBSCRIPTION_ID, basePlanId: PLAY_BASE_PLAN_ID };
+  });
+  if (subscription.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING') {
+    await playApi(`purchases/subscriptions/${encodeURIComponent(PLAY_SUBSCRIPTION_ID)}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`, { method: 'POST', body: JSON.stringify({}) });
+  }
+  return { tier: 'plus', expiresAt };
 }
 async function reserveAiUse(userId) {
   return mutateDatabase(db => {
@@ -236,8 +299,19 @@ async function handleApi(req, res, url, cors) {
   if (url.pathname.startsWith('/api/')) {
     const auth = await authenticate(req);
     if (!auth) { sendJson(res, 401, { error: 'Please sign in to continue.' }, cors); return true; }
+    if (await handleNotifications({ req, res, url, auth, database, mutateDatabase, sendJson, readJson, cors, allowRequest })) return true;
     if (req.method === 'GET' && url.pathname === '/api/quota') {
-      sendJson(res, 200, { quota: currentPlan(auth.user) }, cors);
+      sendJson(res, 200, { quota: { ...currentPlan(auth.user), billingReady: Boolean(googlePlayCredentials()) }, billingAccountId: createHash('sha256').update(auth.user.id).digest('hex') }, cors);
+      return true;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/billing/google-play/verify') {
+      try {
+        const body = await readJson(req, 10_000);
+        const entitlement = await verifyPlaySubscription(auth.user.id, body.purchaseToken);
+        sendJson(res, 200, { entitlement, quota: currentPlan(auth.user) }, cors);
+      } catch (error) {
+        sendJson(res, 400, { error: error.message || 'Google Play could not verify this purchase.' }, cors);
+      }
       return true;
     }
     if (req.method === 'POST' && url.pathname === '/api/coach') {

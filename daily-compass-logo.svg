@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Daily Compass</title>
+  <defs><linearGradient id="bg" x1="8" y1="8" x2="88" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#3478ff"/><stop offset="1" stop-color="#16b8ce"/></linearGradient><linearGradient id="sun" x1="42" y1="38" x2="57" y2="55" gradientUnits="userSpaceOnUse"><stop stop-color="#fff6d7"/><stop offset="1" stop-color="#ffd178"/></linearGradient></defs>
+  <rect x="4" y="4" width="88" height="88" rx="27" fill="url(#bg)"/>
+  <circle cx="48" cy="48" r="23" fill="none" stroke="#fff" stroke-opacity=".66" stroke-width="2.5"/>
+  <path d="M48 13 53 29 48 26 43 29 48 13ZM83 48 67 53 70 48 67 43 83 48ZM48 83 43 67 48 70 53 67 48 83ZM13 48 29 43 26 48 29 53 13 48Z" fill="#fff"/>
+  <path d="M39 53a9 9 0 0 1 18 0H39Z" fill="url(#sun)"/>
+  <path d="M36 55h24" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M40 59c4 2 12 2 16 0" fill="none" stroke="#baf7f3" stroke-width="2" stroke-linecap="round"/>
+</svg>

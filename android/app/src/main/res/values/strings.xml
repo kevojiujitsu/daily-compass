@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">Daily Compass</string>
     <string name="title_activity_main">Daily Compass</string>
-    <string name="package_name">com.dailycompass.app</string>
-    <string name="custom_url_scheme">com.dailycompass.app</string>
+    <string name="package_name">com.kevthedev.dailycompass.mobile</string>
+    <string name="custom_url_scheme">com.kevthedev.dailycompass.mobile</string>
+    <string name="privacy_policy_url">https://daily-compass-api.onrender.com/privacy.html</string>
+    <string name="background_notification_title">Daily Compass health data</string>
+    <string name="background_notification_description">Daily Compass reads health records only when you request a sync.</string>
 </resources>

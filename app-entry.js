@@ -34,6 +34,7 @@ document.getElementById('deleteDataBtn').onclick = async () => {
     const data = await response.json();
     if (!response.ok) { toast(data.error || 'Could not delete your account.'); return; }
   } catch { toast('Could not reach the server. Your account was not deleted. Try again when online.'); return; }
+  await window.compassNotifications?.cleanup(true).catch(() => {});
   localStorage.removeItem(PROFILE_KEY);
   localStorage.removeItem(KEY);
   localStorage.removeItem(MOOD_CHECKINS_KEY);
@@ -46,11 +47,107 @@ document.getElementById('deleteDataBtn').onclick = async () => {
 
 function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } }
 function loadMoodCheckins() { try { const value = JSON.parse(localStorage.getItem(MOOD_CHECKINS_KEY) || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; } }
-function save() { localStorage.setItem(KEY, JSON.stringify(entries)); }
+function save() { localStorage.setItem(KEY, JSON.stringify(entries)); window.compassNotifications?.sync(); }
 function updatePlanCard() {
   const limit = planState.tier === 'plus' ? PLUS_AI_LIMIT : FREE_AI_LIMIT;
   document.getElementById('planName').textContent = planState.tier === 'plus' ? 'Compass Plus' : 'Free plan';
   document.getElementById('planUsage').textContent = `${Math.min(planState.count, limit)} of ${limit} AI uses used this month`;
+}
+const PLAY_PRODUCT_ID = 'compass_plus';
+const PLAY_BASE_PLAN_ID = 'monthly';
+const nativePurchases = window.capacitorNativePurchases?.NativePurchases;
+const purchaseType = window.capacitorNativePurchases?.PURCHASE_TYPE;
+let plusStoreProduct = null;
+let billingAccountId = '';
+function plusMessage(text) { document.getElementById('plusInfo').textContent = text; }
+async function loadPlusProduct() {
+  const buyButton = document.getElementById('buyPlusBtn');
+  document.getElementById('managePlusBtn').hidden = planState.tier !== 'plus';
+  document.getElementById('restorePlusBtn').hidden = planState.tier === 'plus';
+  if (planState.tier === 'plus') {
+    document.getElementById('plusPrice').textContent = 'Your Compass Plus subscription is active.';
+    buyButton.hidden = true;
+    plusMessage('Enjoy 30 AI uses each month. You can manage or cancel your subscription in Google Play.');
+    return;
+  }
+  buyButton.hidden = false;
+  buyButton.disabled = true;
+  buyButton.textContent = 'Checking subscription…';
+  if (!nativePurchases || window.Capacitor?.getPlatform?.() !== 'android') {
+    document.getElementById('plusPrice').textContent = 'Monthly plan';
+    plusMessage('Compass Plus subscriptions are available in the Android app through Google Play.');
+    buyButton.textContent = 'Available in the Android app';
+    return;
+  }
+  if (!localStorage.getItem(AUTH_KEY)) {
+    plusMessage('Sign in to your Daily Compass account to subscribe.');
+    buyButton.textContent = 'Sign in to subscribe';
+    return;
+  }
+  if (!planState.billingReady) {
+    document.getElementById('plusPrice').textContent = 'Monthly plan';
+    plusMessage('Google Play purchase verification is still being connected. Try again later.');
+    buyButton.textContent = 'Not available yet';
+    return;
+  }
+  try {
+    const support = await nativePurchases.isBillingSupported();
+    if (!support.isBillingSupported) throw new Error('Google Play billing is not available on this device.');
+    const { products } = await nativePurchases.getProducts({ productIdentifiers: [PLAY_PRODUCT_ID], productType: purchaseType.SUBS });
+    plusStoreProduct = products.find(item => item.planIdentifier === PLAY_PRODUCT_ID && item.identifier === PLAY_BASE_PLAN_ID) || null;
+    if (!plusStoreProduct) throw new Error('Compass Plus is not available in Google Play yet.');
+    document.getElementById('plusPrice').textContent = `${plusStoreProduct.priceString} / month`;
+    plusMessage('Billed monthly through Google Play. You can cancel any time in your Google Play subscriptions.');
+    buyButton.disabled = false;
+    buyButton.textContent = `Subscribe · ${plusStoreProduct.priceString} / month`;
+  } catch (error) {
+    document.getElementById('plusPrice').textContent = 'Monthly plan';
+    plusMessage(error.message || 'Google Play could not load the subscription right now.');
+    buyButton.textContent = 'Try again';
+  }
+}
+async function verifyPlayPurchase(transaction) {
+  if (!transaction || transaction.productIdentifier !== PLAY_PRODUCT_ID || transaction.purchaseState !== '1' || !transaction.purchaseToken) {
+    if (transaction?.purchaseState === '0') throw new Error('Your payment is pending. Compass Plus will turn on after Google Play confirms it.');
+    throw new Error('Google Play did not return a completed Compass Plus purchase.');
+  }
+  const response = await fetch(apiUrl('/api/billing/google-play/verify'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` },
+    body: JSON.stringify({ purchaseToken: transaction.purchaseToken })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Google Play could not verify the purchase.');
+  if (data.quota) { planState = { ...planState, ...data.quota }; updatePlanCard(); }
+  return true;
+}
+async function restorePlusPurchases() {
+  const button = document.getElementById('restorePlusBtn');
+  button.disabled = true;
+  try {
+    if (!nativePurchases || window.Capacitor?.getPlatform?.() !== 'android') throw new Error('Restore purchases in the Android app using Google Play.');
+    await nativePurchases.restorePurchases();
+    const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
+    const owned = purchases.find(item => item.productIdentifier === PLAY_PRODUCT_ID && item.purchaseState === '1' && item.purchaseToken);
+    if (!owned) throw new Error('No Compass Plus subscription was found for this Google Play account.');
+    await verifyPlayPurchase(owned);
+    await loadQuota();
+    toast('Compass Plus restored.');
+    await loadPlusProduct();
+  } catch (error) { plusMessage(error.message || 'Could not restore purchases.'); }
+  finally { button.disabled = false; }
+}
+async function syncExistingPlusPurchase() {
+  if (!nativePurchases || window.Capacitor?.getPlatform?.() !== 'android' || !planState.billingReady || !billingAccountId) return;
+  try {
+    const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
+    const owned = purchases.find(item => item.productIdentifier === PLAY_PRODUCT_ID && item.purchaseState === '1' && item.purchaseToken);
+    if (owned) {
+      await verifyPlayPurchase(owned);
+      planState.tier = 'plus';
+      updatePlanCard();
+    }
+  } catch (error) { console.warn('Google Play subscription refresh was deferred:', error.message); }
 }
 function today() { return toDateInput(new Date()); }
 function toDateInput(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
@@ -102,9 +199,25 @@ function showPage(name) {
   if (name === 'health') { renderHealth(); if (localStorage.getItem(HEALTH_CONNECTED_KEY) === 'true') refreshHealthData(); }
 }
 const plusDialog = document.getElementById('plusDialog');
-function openPlusDialog() { plusDialog.showModal(); }
+function openPlusDialog() { plusDialog.showModal(); loadPlusProduct(); }
 document.getElementById('topPlusBtn').onclick = openPlusDialog;
-
+document.getElementById('buyPlusBtn').onclick = async event => {
+  const button = event.currentTarget;
+  if (!plusStoreProduct || !nativePurchases) { await loadPlusProduct(); return; }
+  button.disabled = true; button.textContent = 'Opening Google Play…';
+  try {
+    const transaction = await nativePurchases.purchaseProduct({ productIdentifier: PLAY_PRODUCT_ID, planIdentifier: PLAY_BASE_PLAN_ID, offerToken: plusStoreProduct.offerToken, productType: purchaseType.SUBS, appAccountToken: billingAccountId, autoAcknowledgePurchases: false });
+    await verifyPlayPurchase(transaction);
+    await loadQuota();
+    toast('Welcome to Compass Plus.');
+    await loadPlusProduct();
+  } catch (error) { plusMessage(error.message || 'The purchase could not be completed.'); await loadPlusProduct(); }
+};
+document.getElementById('restorePlusBtn').onclick = restorePlusPurchases;
+document.getElementById('managePlusBtn').onclick = async () => {
+  try { await nativePurchases?.manageSubscriptions(); }
+  catch { plusMessage('Open Google Play → Payments & subscriptions → Subscriptions to manage Compass Plus.'); }
+};
 const icons = { Journal: '✍️', Tasks: '✓', Health: '☘️' };
 document.querySelectorAll('.cat').forEach(b => b.addEventListener('click', () => {
   selected = b.dataset.cat;
@@ -318,7 +431,9 @@ async function loadQuota() {
     if (!response.ok) throw new Error('Could not load account usage.');
     const data = await response.json();
     planState = data.quota || planState;
+    billingAccountId = data.billingAccountId || '';
     updatePlanCard();
+    await syncExistingPlusPurchase();
     return true;
   } catch { document.getElementById('planUsage').textContent = 'Connect to your account to see this month’s AI usage'; return false; }
 }
@@ -374,7 +489,16 @@ function renderTasks() {
   const openCount = tasks.filter(e => !e.completed).length;
   document.getElementById('taskCount').textContent = `${openCount} open · ${tasks.length} total`;
   document.getElementById('taskMomentum').textContent = openCount ? `You have ${openCount} open ${openCount === 1 ? 'step' : 'steps'}. Pick one that matches the energy you have today.` : 'You have room to choose something worth doing next.';
-  document.getElementById('taskList').innerHTML = tasks.length ? tasks.map(e => `<div class="task-item"><input class="task-check" type="checkbox" data-id="${esc(e.id)}" aria-label="Mark task complete" ${e.completed ? 'checked' : ''}><div><div class="task-copy${e.completed ? ' done' : ''}">${esc(e.text)}</div><div class="task-meta">${e.priority ? `${({gentle:'Gentle start',steady:'Steady focus',deep:'Deep focus'})[e.priority] || ''} · ` : ''}${e.dueDate ? `Due ${esc(prettyDate(e.dueDate))}` : `Added ${esc(prettyDate(e.date))}`}${e.completed ? ' · Complete' : ''}</div></div><button class="icon-btn task-delete" data-id="${esc(e.id)}" title="Delete task" aria-label="Delete task">×</button></div>`).join('') : '<div class="empty"><span>✓</span>Your path is clear. Add a next step whenever one comes to mind.</div>';
+  document.getElementById('taskList').innerHTML = tasks.length ? tasks.map(e => `<div class="task-item"><input class="task-check" type="checkbox" data-id="${esc(e.id)}" aria-label="Mark task complete" ${e.completed ? 'checked' : ''}><div><div class="task-copy${e.completed ? ' done' : ''}">${esc(e.text)}</div><div class="task-meta">${e.priority ? `${({gentle:'Gentle start',steady:'Steady focus',deep:'Deep focus'})[e.priority] || ''} · ` : ''}${e.dueDate ? `Due ${esc(prettyDate(e.dueDate))}` : `Added ${esc(prettyDate(e.date))}`}${e.completed ? ' · Complete' : ''}</div>${!e.completed ? `<label class="task-reminder">Phone reminder<input type="datetime-local" data-task-reminder="${esc(e.id)}" aria-label="Reminder date and time" value="${esc(e.reminderAt || '')}"></label>` : ''}</div><button class="icon-btn task-delete" data-id="${esc(e.id)}" title="Delete task" aria-label="Delete task">×</button></div>`).join('') : '<div class="empty"><span>✓</span>Your path is clear. Add a next step whenever one comes to mind.</div>';
+  document.querySelectorAll('[data-task-reminder]').forEach(input => input.onchange = () => {
+    const task = entries.find(entry => entry.id === input.dataset.taskReminder);
+    if (!task) return;
+    if (input.value && (!Number.isFinite(new Date(input.value).getTime()) || new Date(input.value) <= new Date())) { toast('Choose a future reminder time.'); input.value = task.reminderAt || ''; return; }
+    task.reminderAt = input.value;
+    if (input.value && !task.notificationId) task.notificationId = Math.max(10000, ...entries.map(entry => Number(entry.notificationId) || 0)) + 1;
+    save();
+    toast(window.compassNotifications?.settings().tasks ? 'Task reminder saved.' : 'Time saved. Enable task reminders in Notifications to receive it on your phone.');
+  });
   document.querySelectorAll('.task-check').forEach(box => box.onchange = () => { const task = entries.find(e => e.id === box.dataset.id); if (task) { task.completed = box.checked; save(); render(); } });
   document.querySelectorAll('.task-delete').forEach(button => button.onclick = () => { entries = entries.filter(e => e.id !== button.dataset.id); save(); render(); });
 }
@@ -475,7 +599,6 @@ async function refreshReflection() {
 }
 document.getElementById('refreshBtn').onclick = refreshReflection;
 document.getElementById('refreshBtn').textContent = 'Refresh my reflection & nudge';
-
 updatePlanCard();
 initMoodGate();
 const musicTracks = {

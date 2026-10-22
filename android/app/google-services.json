@@ -1,0 +1,23 @@
+{
+  "project_info": {
+    "project_number": "713468585713",
+    "project_id": "daily-compass-64dd1"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:713468585713:android:e3291e157609cfbf462b50",
+        "android_client_info": {
+          "package_name": "com.kevthedev.dailycompass.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCv3LyyAvaJAyC-i98ecS3sWRXoNjrG77c"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}

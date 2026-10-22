@@ -1,8 +1,20 @@
 {
-  "appId": "com.dailycompass.app",
+  "appId": "com.kevthedev.dailycompass.mobile",
   "appName": "Daily Compass",
   "webDir": "www",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_compass",
+      "iconColor": "#51d8cc"
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "alert",
+        "sound"
+      ]
+    }
   }
 }

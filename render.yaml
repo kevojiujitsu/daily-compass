@@ -22,3 +22,13 @@ services:
         sync: false
       - key: DAILY_COMPASS_MODERATOR_EMAIL
         sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: DAILY_COMPASS_ANNOUNCEMENT_EMAIL
+        sync: false
+      - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_PLAY_SUBSCRIPTION_ID
+        value: compass_plus
+      - key: GOOGLE_PLAY_BASE_PLAN_ID
+        value: monthly

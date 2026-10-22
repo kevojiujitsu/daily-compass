@@ -1,0 +1,10 @@
+{
+  "privacyPolicyUrl": "https://daily-compass-api.onrender.com/privacy.html",
+  "permissions": {
+    "STEPS": "Read",
+    "CALORIES_BURNED": "Read",
+    "HEART_RATE": "Read"
+  },
+  "disableBackgroundJobs": true,
+  "disableReadHealthDataHistory": true
+}
