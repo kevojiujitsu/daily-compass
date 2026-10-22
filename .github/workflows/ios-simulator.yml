@@ -48,6 +48,29 @@ jobs:
             -derivedDataPath work/ios-derived \
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee work/ios-build.log
+      - name: Launch on iPhone simulator
+        shell: bash
+        run: |
+          runtime=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and "iOS-26" in x["identifier"]]; assert r, "No iOS 26 runtime installed"; print(sorted(r,key=lambda x:tuple(map(int,x["version"].split("."))))[-1]["identifier"])')
+          device=$(xcrun simctl create 'Daily Compass smoke test' com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max "$runtime")
+          echo "SIMULATOR_UDID=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl status_bar "$device" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          xcrun simctl install "$device" work/ios-derived/Build/Products/Debug-iphonesimulator/App.app
+          xcrun simctl launch "$device" com.kevthedev.dailycompass.mobile
+          sleep 12
+          xcrun simctl io "$device" screenshot work/ios-launch.png
+      - name: Save iPhone launch screenshot
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-iphone-launch
+          path: work/ios-launch.png
+          retention-days: 1
+          if-no-files-found: error
+      - name: Stop test simulator
+        if: always() && env.SIMULATOR_UDID != ''
+        run: xcrun simctl shutdown "$SIMULATOR_UDID"
       - name: Package simulator app
         run: ditto -c -k --sequesterRsrc --keepParent work/ios-derived/Build/Products/Debug-iphonesimulator/App.app work/DailyCompass-simulator.zip
       - name: Save simulator build
