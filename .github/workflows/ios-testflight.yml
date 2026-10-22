@@ -1,0 +1,96 @@
+name: iOS signed TestFlight build (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+      - name: Prepare app
+        run: |
+          npm install --global pnpm@10.20.0
+          pnpm install --frozen-lockfile
+          npm run ios
+          npm run ios:check
+      - name: Install signing credentials
+        env:
+          P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12 }}
+          P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/apple-signing"
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/apple-signing/distribution.p12"
+          echo "$PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/apple-signing/profile.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/apple-signing/profile.mobileprovision" > "$RUNNER_TEMP/apple-signing/profile.plist"
+          uuid=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/apple-signing/profile.plist")
+          echo "PROFILE_UUID=$uuid" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/apple-signing/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          keychain_password=$(openssl rand -hex 32)
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$RUNNER_TEMP/apple-signing/build.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/apple-signing/build.keychain-db"
+          security unlock-keychain -p "$keychain_password" "$RUNNER_TEMP/apple-signing/build.keychain-db"
+          security import "$RUNNER_TEMP/apple-signing/distribution.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$RUNNER_TEMP/apple-signing/build.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$keychain_password" "$RUNNER_TEMP/apple-signing/build.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/apple-signing/build.keychain-db" "$HOME/Library/Keychains/login.keychain-db"
+      - name: Archive signed iOS app
+        run: |
+          mkdir -p work
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath work/DailyCompass.xcarchive DEVELOPMENT_TEAM=Z9BXH892FC CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" archive 2>&1 | tee work/ios-archive.log
+      - name: Export App Store package
+        run: |
+          python3 - <<'PY'
+          import os,plistlib
+          options={'method':'app-store-connect','teamID':'Z9BXH892FC','signingStyle':'manual','signingCertificate':'Apple Distribution','provisioningProfiles':{'com.kevthedev.dailycompass.mobile':os.environ['PROFILE_UUID']},'uploadSymbols':True,'manageAppVersionAndBuildNumber':False}
+          with open('work/ExportOptions.plist','wb') as f: plistlib.dump(options,f)
+          PY
+          xcodebuild -exportArchive -archivePath work/DailyCompass.xcarchive -exportPath work/export -exportOptionsPlist work/ExportOptions.plist 2>&1 | tee work/ios-export.log
+      - name: Upload to App Store Connect
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/apple-signing/private_keys"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/apple-signing/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/apple-signing/private_keys"
+          ipa=$(find work/export -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          xcrun altool --upload-app -f "$ipa" --type ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee work/ios-upload.log
+      - name: Save signed app
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-ios-signed
+          path: work/export/*.ipa
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/apple-signing/build.keychain-db" || true
+          if [ -n "$PROFILE_UUID" ]; then rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"; fi
+          rm -rf "$RUNNER_TEMP/apple-signing"
+      - name: Save build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-ios-release-logs
+          path: work/ios-*.log
+          retention-days: 1
+          if-no-files-found: ignore
