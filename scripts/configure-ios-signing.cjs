@@ -1,4 +1,5 @@
-const xcode = require('xcode');
+const path = require('path');
+const xcode = require(require.resolve('xcode', { paths: [path.dirname(require.resolve('@capacitor/cli/package.json'))] }));
 const fs = require('fs');
 const projectPath = 'ios/App/App.xcodeproj/project.pbxproj';
 const project = xcode.project(projectPath);
@@ -16,3 +17,4 @@ for (const config of Object.values(project.pbxXCBuildConfigurationSection())) {
 if (!count || !process.env.PROFILE_UUID) throw new Error('Missing app target or signing profile');
 fs.writeFileSync(projectPath, project.writeSync());
 console.log('Configured app target signing; package targets retain their own settings.');
+
