@@ -25,7 +25,7 @@ let communityGuidelinesAccepted = false;
 if (!profile?.name || !Number.isInteger(profile.age) || profile.age < 18 || !localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(UNLOCK_KEY) !== 'true') location.replace('welcome.html');
 document.getElementById('lockBtn').onclick = () => { sessionStorage.removeItem(UNLOCK_KEY); sessionStorage.removeItem(MOOD_DONE_KEY); location.replace('welcome.html'); };
 document.getElementById('deleteDataBtn').onclick = async () => {
-  const confirmed = window.confirm('Permanently delete your Daily Compass account, monthly AI usage record, profile, and every journal entry, mood, task, and check-in saved on this device? This cannot be undone.');
+  const confirmed = window.confirm('Permanently delete your Daily Compass account, monthly AI usage record, profile, and every journal entry, mood, task, and check-in saved on this device? This cannot be undone. Deleting your account does not cancel a subscription: cancel it separately in your App Store or Google Play subscription settings.');
   if (!confirmed) return;
   const password = window.prompt('Enter your account password to confirm deletion.');
   if (password === null) return;
@@ -53,6 +53,9 @@ function updatePlanCard() {
   document.getElementById('planName').textContent = planState.tier === 'plus' ? 'Compass Plus' : 'Free plan';
   document.getElementById('planUsage').textContent = `${Math.min(planState.count, limit)} of ${limit} AI uses used this month`;
 }
+const APPLE_PRODUCT_ID = 'compass_plus_monthly';
+const isIOS = window.Capacitor?.getPlatform?.() === 'ios';
+let appleAccountToken = '';
 const PLAY_PRODUCT_ID = 'compass_plus';
 const PLAY_BASE_PLAN_ID = 'monthly';
 const nativePurchases = window.capacitorNativePurchases?.NativePurchases;
@@ -61,6 +64,7 @@ let plusStoreProduct = null;
 let billingAccountId = '';
 function plusMessage(text) { document.getElementById('plusInfo').textContent = text; }
 async function loadPlusProduct() {
+  if (isIOS) return loadAppleProduct();
   const buyButton = document.getElementById('buyPlusBtn');
   document.getElementById('managePlusBtn').hidden = planState.tier !== 'plus';
   document.getElementById('restorePlusBtn').hidden = planState.tier === 'plus';
@@ -122,6 +126,7 @@ async function verifyPlayPurchase(transaction) {
   return true;
 }
 async function restorePlusPurchases() {
+  if (isIOS) return restoreApplePurchases();
   const button = document.getElementById('restorePlusBtn');
   button.disabled = true;
   try {
@@ -138,6 +143,15 @@ async function restorePlusPurchases() {
   finally { button.disabled = false; }
 }
 async function syncExistingPlusPurchase() {
+  if (isIOS) {
+    if (!nativePurchases || !planState.appleBillingReady || !appleAccountToken) return;
+    try {
+      const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
+      const owned = purchases.find(item => item.productIdentifier === APPLE_PRODUCT_ID && item.jwsRepresentation);
+      if (owned) await verifyApplePurchase(owned);
+    } catch (error) { console.warn('Apple subscription refresh deferred:', error.message); }
+    return;
+  }
   if (!nativePurchases || window.Capacitor?.getPlatform?.() !== 'android' || !planState.billingReady || !billingAccountId) return;
   try {
     const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
@@ -149,6 +163,61 @@ async function syncExistingPlusPurchase() {
     }
   } catch (error) { console.warn('Google Play subscription refresh was deferred:', error.message); }
 }
+
+async function loadAppleProduct() {
+  const buy = document.getElementById('buyPlusBtn');
+  const active = planState.tier === 'plus';
+  document.getElementById('managePlusBtn').hidden = !active;
+  document.getElementById('restorePlusBtn').hidden = false;
+  document.querySelector('.plus-terms').innerHTML = 'Monthly subscription. Payment is charged to your Apple Account. Renews automatically unless canceled at least 24 hours before the current period ends. Manage or cancel in Settings → your Apple Account → Subscriptions. <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a> · <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use</a>';
+  buy.hidden = active; buy.disabled = true;
+  document.getElementById('plusPrice').textContent = active ? 'Your Compass Plus subscription is active.' : 'Monthly plan';
+  plusMessage(active ? 'Your account includes 30 AI uses each month.' : 'Checking App Store availability…');
+  if (active) return;
+  buy.textContent = 'Checking subscription…';
+  if (!nativePurchases || !planState.appleBillingReady || !appleAccountToken) {
+    plusMessage('Subscriptions are being prepared for the App Store. Free features remain available.');
+    buy.textContent = 'Not available yet'; return;
+  }
+  try {
+    const { products } = await nativePurchases.getProducts({ productIdentifiers: [APPLE_PRODUCT_ID], productType: purchaseType.SUBS });
+    plusStoreProduct = products.find(item => item.identifier === APPLE_PRODUCT_ID);
+    if (!plusStoreProduct) throw new Error('The App Store could not load Compass Plus. Please try again later.');
+    document.getElementById('plusPrice').textContent = plusStoreProduct.priceString + ' / month';
+    plusMessage('30 AI uses per month for reflections, summaries, task advice, and general health planning.');
+    buy.textContent = 'Subscribe · ' + plusStoreProduct.priceString + ' / month'; buy.disabled = false;
+  } catch (error) { plusMessage(error.message); buy.textContent = 'Try again'; buy.disabled = false; plusStoreProduct = null; }
+}
+async function verifyApplePurchase(transaction) {
+  if (!transaction?.jwsRepresentation || transaction.productIdentifier !== APPLE_PRODUCT_ID) throw new Error('The App Store did not return a signed Compass Plus purchase.');
+  const response = await fetch(apiUrl('/api/billing/apple/verify'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem(AUTH_KEY) }, body: JSON.stringify({ signedTransaction: transaction.jwsRepresentation }) });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Apple could not verify the subscription.');
+  if (data.quota) { planState = { ...planState, ...data.quota }; updatePlanCard(); }
+  if (planState.tier !== 'plus') throw new Error('This subscription has expired or was refunded.');
+}
+async function restoreApplePurchases() {
+  const button = document.getElementById('restorePlusBtn'); button.disabled = true;
+  try {
+    if (!nativePurchases || !planState.appleBillingReady) throw new Error('Apple purchase verification is not available yet.');
+    await nativePurchases.restorePurchases();
+    const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
+    const owned = purchases.find(item => item.productIdentifier === APPLE_PRODUCT_ID && item.jwsRepresentation);
+    if (!owned) throw new Error('No active Compass Plus subscription was found for this Apple Account.');
+    await verifyApplePurchase(owned); toast('Compass Plus restored.'); await loadAppleProduct();
+  } catch (error) { plusMessage(error.message || 'Could not restore purchases.'); }
+  finally { button.disabled = false; }
+}
+async function purchaseAppleProduct(button) {
+  if (!plusStoreProduct || !nativePurchases) { await loadAppleProduct(); return; }
+  button.disabled = true; button.textContent = 'Opening the App Store…';
+  try {
+    const transaction = await nativePurchases.purchaseProduct({ productIdentifier: APPLE_PRODUCT_ID, productType: purchaseType.SUBS, appAccountToken: appleAccountToken, quantity: 1 });
+    await verifyApplePurchase(transaction); toast('Welcome to Compass Plus.');
+  } catch (error) { plusMessage(error.message || 'The purchase was not completed. You can restore it later.'); button.textContent = 'Try again'; button.disabled = false; return; }
+  await loadAppleProduct();
+}
+
 function today() { return toDateInput(new Date()); }
 function toDateInput(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function dateFromInput(value) { return new Date(`${value}T12:00:00`); }
@@ -204,6 +273,7 @@ document.getElementById('topPlusBtn').onclick = () => { document.getElementById(
 document.getElementById('profileBtn').onclick = () => { document.getElementById('profileName').textContent = profile?.name || 'Your profile'; document.getElementById('profileEmail').textContent = profile?.email || ''; document.getElementById('profileDialog').showModal(); };
 document.getElementById('changeMoodBtn').onclick = () => { const gate = document.getElementById('moodGate'); gate.querySelector('.mood-dialog').hidden = false; const quote = document.getElementById('quoteTransition'); quote.hidden = true; quote.classList.remove('visible','leaving'); gate.classList.remove('leaving'); gate.setAttribute('aria-labelledby','moodGateTitle'); gate.setAttribute('aria-describedby','moodGateIntro'); gate.hidden = false; document.querySelector('.shell').inert = true; selectedMood = ''; document.getElementById('continueMood').disabled = true; document.getElementById('moodSelectionHint').textContent = 'Select a mood to continue.'; document.querySelectorAll('.mood-option').forEach(button => button.setAttribute('aria-pressed','false')); document.querySelector('.mood-option')?.focus(); };
 document.getElementById('buyPlusBtn').onclick = async event => {
+  if (isIOS) { await purchaseAppleProduct(event.currentTarget); return; }
   const button = event.currentTarget;
   if (!plusStoreProduct || !nativePurchases) { await loadPlusProduct(); return; }
   button.disabled = true; button.textContent = 'Opening Google Play…';
@@ -218,7 +288,7 @@ document.getElementById('buyPlusBtn').onclick = async event => {
 document.getElementById('restorePlusBtn').onclick = restorePlusPurchases;
 document.getElementById('managePlusBtn').onclick = async () => {
   try { await nativePurchases?.manageSubscriptions(); }
-  catch { plusMessage('Open Google Play → Payments & subscriptions → Subscriptions to manage Compass Plus.'); }
+  catch { plusMessage(isIOS ? 'Open Settings → your Apple Account → Subscriptions to manage Compass Plus.' : 'Open Google Play → Payments & subscriptions → Subscriptions to manage Compass Plus.'); }
 };
 const icons = { Journal: '✍️', Tasks: '✓', Health: '☘️' };
 document.querySelectorAll('.cat').forEach(b => b.addEventListener('click', () => {
@@ -245,13 +315,30 @@ function showCoachResult(target, result) {
   document.getElementById(`${target}Note`).textContent = result.note || '';
   document.getElementById(`${target}Result`).hidden = false;
 }
+
+function requestAIConsent(details) {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'plus-dialog';
+    dialog.setAttribute('aria-labelledby', 'aiConsentTitle');
+    dialog.innerHTML = '<h2 id="aiConsentTitle">Share with AI?</h2><p class="health-privacy">' + esc(details) + '</p><p class="health-privacy">Daily Compass sends this information through its server to OpenAI to generate your response. It may include sensitive information you wrote. Apple Health and Health Connect readings are never included. You can cancel and keep using your journal and tasks.</p><p class="health-privacy">OpenAI processes API data under its policies. Read our <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a> for retention details.</p><div class="health-ai-buttons"><button type="button" class="primary" data-allow>Share and continue</button><button type="button" class="secondary-btn" data-cancel>Cancel</button></div>';
+    let allowed = false;
+    dialog.querySelector('[data-allow]').onclick = () => { allowed = true; dialog.close(); };
+    dialog.querySelector('[data-cancel]').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => { dialog.remove(); resolve(allowed); }, { once: true });
+    document.body.append(dialog); dialog.showModal();
+    dialog.querySelector('[data-cancel]').focus();
+  });
+}
+
 async function coachRequest(kind, button, body) {
+  if (!await requestAIConsent(kind === 'tasks' ? 'Share the tasks, due dates, completion status, and priorities included in this request.' : 'Share the goals, equipment, food preferences, allergy exclusions, ingredients, and available time entered in this form.')) return;
   const oldText = button.textContent;
   button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Putting this together…';
   try {
     const response = await fetch(apiUrl('/api/coach'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` }, body: JSON.stringify({ ...body, kind }) });
     const data = await response.json();
-    if (data.quota) { planState = data.quota; updatePlanCard(); }
+    if (data.quota) { planState = { ...planState, ...data.quota }; updatePlanCard(); }
     if (!response.ok) { if (data.code === 'MONTHLY_LIMIT_REACHED') openPlusDialog(); throw new Error(data.error || 'AI advice is not available right now.'); }
     showCoachResult(kind === 'tasks' ? 'taskCoach' : 'healthCoach', data);
   } catch (error) { toast(error.message || 'AI advice could not be generated.'); }
@@ -272,11 +359,12 @@ async function summarizeJournal(days, scope, button) {
   const periodEntries = entries.filter(entry => entry.category === 'Journal' && entry.date >= from && entry.date <= through).map(entry => ({ category: 'Journal', text: entry.text, mood: entry.mood || '', completed: false, date: entry.date }));
   Object.entries(moodCheckins).filter(([date]) => date >= from && date <= through).forEach(([date, mood]) => periodEntries.push({ category: 'Health', text: 'Daily mood check-in', mood, date }));
   if (!periodEntries.length) { toast(`Add a journal note or mood check-in in the past ${days} days first.`); return; }
+  if (!await requestAIConsent('Share your journal notes and mood check-ins from the selected ' + scope + ' with OpenAI for a summary.')) return;
   const oldText = button.textContent; button.disabled = true; button.textContent = 'Summarizing…';
   try {
     const response = await fetch(apiUrl('/api/insights'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` }, body: JSON.stringify({ date: through, summaryScope: scope, entries: periodEntries.slice(-100), journalHistory: [] }) });
     const data = await response.json();
-    if (data.quota) { planState = data.quota; updatePlanCard(); }
+    if (data.quota) { planState = { ...planState, ...data.quota }; updatePlanCard(); }
     if (!response.ok) { if (data.code === 'MONTHLY_LIMIT_REACHED') openPlusDialog(); throw new Error(data.error || 'Could not create a summary.'); }
     document.getElementById('summary').textContent = data.summary || 'No summary was returned.';
     document.getElementById('summaryLabel').textContent = scope === 'week' ? 'Past week' : 'Past month';
@@ -448,6 +536,7 @@ async function loadQuota() {
     const data = await response.json();
     planState = data.quota || planState;
     billingAccountId = data.billingAccountId || '';
+    appleAccountToken = data.appleAccountToken || '';
     updatePlanCard();
     await syncExistingPlusPurchase();
     return true;
@@ -467,6 +556,7 @@ function journalHistory() {
 async function makeReflection(useAi = false) {
   const list = current();
   let failure = '';
+  if (useAi && aiReady && !await requestAIConsent('Share the selected day’s journal, task and health notes, mood check-in, and up to 60 journal notes from the previous 30 days for a reflection.')) return { ...localReflection(list), source: 'local' };
   if (useAi && aiReady) {
     try {
       const response = await fetch(apiUrl('/api/insights'), {
@@ -474,7 +564,7 @@ async function makeReflection(useAi = false) {
       body: JSON.stringify({ date: selectedDate, entries: [...list.map(e => ({ category: e.category, text: e.text, mood: e.mood, completed: e.completed, dueDate: e.dueDate })), ...(moodCheckins[selectedDate] ? [{ category: 'Health', text: 'Daily mood check-in', mood: moodCheckins[selectedDate] }] : [])], journalHistory: journalHistory() })
       });
       const data = await response.json();
-      if (data.quota) { planState = data.quota; updatePlanCard(); }
+      if (data.quota) { planState = { ...planState, ...data.quota }; updatePlanCard(); }
       if (!response.ok && data.code === 'MONTHLY_LIMIT_REACHED') {
         document.getElementById('plusInfo').hidden = false;
         toast('You have used this month’s AI reflections. Your allowance resets next month.');
@@ -580,15 +670,21 @@ document.getElementById('calorieAdd').onclick = () => { const note = document.ge
 document.getElementById('habitAdd').onclick = () => { const field = document.getElementById('habitInput'), habit = field.value.trim(); if (!habit) return; const habits = loadLocal(HABIT_LIST_KEY, []); if (habits.length >= 12) { toast('You can keep up to 12 habits here.'); return; } if (habits.some(item => item.toLowerCase() === habit.toLowerCase())) { toast('That habit is already on your list.'); return; } habits.push(habit); localStorage.setItem(HABIT_LIST_KEY, JSON.stringify(habits)); field.value = ''; renderHealth(); };
 function parseHealthRows(result) { try { const data = JSON.parse(result?.results || '[]'); return Array.isArray(data) ? data : []; } catch { return []; } }
 function firstHealthValue(rows) { for (const row of rows) { if (typeof row === 'number') return row; if (row && typeof row === 'object') for (const [key, value] of Object.entries(row)) { if (/value|sum|total|average|bpm/i.test(key) && Number.isFinite(Number(value))) return Number(value); if (value && typeof value === 'object') { const inner = Object.values(value).find(x => Number.isFinite(Number(x))); if (inner !== undefined) return Number(inner); } } } return null; }
+const healthServiceName = window.Capacitor?.getPlatform?.() === 'ios' ? 'Apple Health' : 'Health Connect';
+const healthSettingsName = window.Capacitor?.getPlatform?.() === 'ios' ? 'the Health app’s sharing settings' : 'Android Health Connect settings';
+if (window.Capacitor?.getPlatform?.() === 'ios') {
+  document.getElementById('connectHealthBtn').textContent = 'Connect Apple Health';
+  document.getElementById('healthConnectNote').textContent = 'Choose read access to steps, active calories burned, and heart rate. These readings stay on your iPhone.';
+}
 async function refreshHealthData() {
   const health = window.capacitorHealthFitness?.HealthFitness;
-  if (!health) { document.getElementById('healthConnectNote').textContent = 'Health Connect syncing is available in the Android app after its native Health Connect module is installed. Your calorie notes and habits still work here.'; return; }
+  if (!health) { document.getElementById('healthConnectNote').textContent = 'Health syncing is available in the iPhone and Android apps. Your calorie notes and habits still work here.'; return; }
   const todayStart = new Date(); todayStart.setHours(0,0,0,0); const iso = date => date.toISOString().split('.')[0] + 'Z', end = new Date();
   const query = async (variable, operationType = 'SUM') => { const result = await health.getData({ parameters: JSON.stringify({ Variable: variable, StartDate: iso(todayStart), EndDate: iso(end), TimeUnit: 'DAY', OperationType: operationType, TimeUnitLength: 1, AdvancedQueryReturnType: 'ALL_DATA', AdvancedQueryResultType: 'RAW_DATA' }) }); return firstHealthValue(parseHealthRows(result)); };
-  try { const [steps, burned, heart] = await Promise.all([query('STEPS'), query('CALORIES_BURNED'), health.getLastRecord({ variable: 'HEART_RATE' }).then(firstHealthValue)]); document.getElementById('stepsValue').textContent = steps === null ? '—' : Math.round(steps).toLocaleString(); document.getElementById('burnedValue').textContent = burned === null ? '—' : `${Math.round(burned)} kcal`; document.getElementById('heartValue').textContent = heart === null ? '—' : `${Math.round(heart)} bpm`; document.getElementById('healthConnectNote').textContent = 'Connected. Today’s Health Connect data is read on your device.'; }
-  catch (error) { document.getElementById('healthConnectNote').textContent = `Health Connect did not return data: ${String(error?.message || 'permission may be missing').slice(0,160)}. You can review access in Android Health Connect settings.`; }
+  try { const [steps, burned, heart] = await Promise.all([query('STEPS'), query('CALORIES_BURNED'), health.getLastRecord({ variable: 'HEART_RATE' }).then(result => firstHealthValue(parseHealthRows(result)))]); document.getElementById('stepsValue').textContent = steps === null ? '—' : Math.round(steps).toLocaleString(); document.getElementById('burnedValue').textContent = burned === null ? '—' : `${Math.round(burned)} kcal`; document.getElementById('heartValue').textContent = heart === null ? '—' : `${Math.round(heart)} bpm`; document.getElementById('healthConnectNote').textContent = `Access requested. Available ${healthServiceName} readings are shown on this device. Missing or denied readings appear as —.`; }
+  catch (error) { document.getElementById('healthConnectNote').textContent = `${healthServiceName} did not return data: ${String(error?.message || 'permission may be missing').slice(0,160)}. You can review access in ${healthSettingsName}.`; }
 }
-document.getElementById('connectHealthBtn').onclick = async () => { const health = window.capacitorHealthFitness?.HealthFitness; if (!health) { toast('Health Connect will be ready when the Android build includes its native health module.'); return; } try { await health.requestHealthPermissions({ customPermissions: JSON.stringify([{Variable:'STEPS',AccessType:'READ'},{Variable:'CALORIES_BURNED',AccessType:'READ'},{Variable:'HEART_RATE',AccessType:'READ'}]), allVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), fitnessVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), healthVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), profileVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), workoutVariables: JSON.stringify({IsActive:false,AccessType:'READ'}) }); localStorage.setItem(HEALTH_CONNECTED_KEY, 'true'); await refreshHealthData(); } catch (error) { toast(`Health Connect could not connect: ${String(error?.message || 'request not completed').slice(0,160)}`); } };
+document.getElementById('connectHealthBtn').onclick = async () => { const health = window.capacitorHealthFitness?.HealthFitness; if (!health) { toast('Open the iPhone or Android app to connect health data.'); return; } try { await health.requestHealthPermissions({ customPermissions: JSON.stringify([{Variable:'STEPS',AccessType:'READ'},{Variable:'CALORIES_BURNED',AccessType:'READ'},{Variable:'HEART_RATE',AccessType:'READ'}]), allVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), fitnessVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), healthVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), profileVariables: JSON.stringify({IsActive:false,AccessType:'READ'}), workoutVariables: JSON.stringify({IsActive:false,AccessType:'READ'}) }); localStorage.setItem(HEALTH_CONNECTED_KEY, 'true'); await refreshHealthData(); } catch (error) { toast(`${healthServiceName} could not connect: ${String(error?.message || 'request not completed').slice(0,160)}`); } };
 document.getElementById('entryText').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') document.getElementById('addBtn').click(); });
 async function refreshReflection() {
   const button = document.getElementById('refreshBtn');

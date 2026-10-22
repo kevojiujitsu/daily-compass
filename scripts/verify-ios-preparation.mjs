@@ -14,4 +14,6 @@ for(const plugin of ['CapacitorHealthFitness','CapacitorLocalNotifications','Cap
 const icon=await readFile(new URL('../ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png',import.meta.url));
 assert.equal(icon.readUInt32BE(16),1024);assert.equal(icon.readUInt32BE(20),1024);assert.ok([0,2].includes(icon[25]),'App icon must be opaque');
 console.log('PASS: iOS identifiers, version, entitlements, permission descriptions, Swift package wiring, and opaque 1024px icon.');
-console.log('Preparation checks only. App Store submission is still blocked by Apple membership, Xcode build/device tests, Apple billing, iOS notification/health flows, privacy disclosures/AI consent, and review materials.');
+assert.ok(info.includes('<key>ITSAppUsesNonExemptEncryption</key>'));
+assert.ok(project.includes('PrivacyInfo.xcprivacy in Resources'));
+console.log('Release configuration checks passed; physical-device and StoreKit sandbox tests plus Apple account/review requirements remain.');

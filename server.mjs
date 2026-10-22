@@ -1,3 +1,4 @@
+import { appleBillingReady, verifyApplePurchase, receiveAppleNotification } from './apple-billing.mjs';
 import http from 'node:http';
 import { handleNotifications } from './push-service.mjs';
 import { networkInterfaces } from 'node:os';
@@ -35,7 +36,6 @@ const files = {
   '/native-purchases.js': ['node_modules/@capgo/native-purchases/dist/plugin.js', 'text/javascript; charset=utf-8'],
   '/app-config.js': ['app-config.js', 'text/javascript; charset=utf-8'],
   '/welcome.html': ['welcome.html', 'text/html; charset=utf-8'],
-  '/crypto-js.js': ['crypto-js.js', 'text/javascript; charset=utf-8'],
   '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'],
   '/support.html': ['support.html', 'text/html; charset=utf-8'],
   '/delete-account.html': ['delete-account.html', 'text/html; charset=utf-8']
@@ -98,8 +98,7 @@ async function initializeDatabase() {
 function monthKey() { return new Date().toISOString().slice(0, 7); }
 function publicUser(user) { return { id: user.id, email: user.email, name: user.name, age: user.age, createdAt: user.createdAt }; }
 function currentPlan(user) {
-  // Plus can only be enabled later by a verified Google Play purchase entitlement.
-  const tier = user.plan?.tier === 'plus' && Number(user.plan.expiresAt) > Date.now() ? 'plus' : 'free';
+  const tier = [user.plan, user.applePlan].some(plan => plan?.tier === 'plus' && Number(plan.expiresAt) > Date.now()) ? 'plus' : 'free';
   const month = monthKey();
   return { tier, month, count: Number(user.usage?.[month] || 0), limit: MONTHLY_LIMITS[tier] };
 }
@@ -297,12 +296,28 @@ async function handleApi(req, res, url, cors) {
     return true;
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/billing/apple/notifications') {
+    try {
+      const body = await readJson(req, 50_000);
+      const result = await mutateDatabase(db => receiveAppleNotification(db, body.signedPayload));
+      sendJson(res, 200, result, cors);
+    } catch { sendJson(res, 400, { error: 'Apple notification could not be verified.' }, cors); }
+    return true;
+  }
   if (url.pathname.startsWith('/api/')) {
     const auth = await authenticate(req);
     if (!auth) { sendJson(res, 401, { error: 'Please sign in to continue.' }, cors); return true; }
     if (await handleNotifications({ req, res, url, auth, database, mutateDatabase, sendJson, readJson, cors, allowRequest })) return true;
     if (req.method === 'GET' && url.pathname === '/api/quota') {
-      sendJson(res, 200, { quota: { ...currentPlan(auth.user), billingReady: Boolean(googlePlayCredentials()) }, billingAccountId: createHash('sha256').update(auth.user.id).digest('hex') }, cors);
+      sendJson(res, 200, { quota: { ...currentPlan(auth.user), billingReady: Boolean(googlePlayCredentials()), appleBillingReady: appleBillingReady() }, billingAccountId: createHash('sha256').update(auth.user.id).digest('hex'), appleAccountToken: auth.user.id }, cors);
+      return true;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/billing/apple/verify') {
+      try {
+        const body = await readJson(req, 50_000);
+        const entitlement = await mutateDatabase(db => verifyApplePurchase(db, db.users.find(user => user.id === auth.user.id), body.signedTransaction));
+        sendJson(res, 200, { entitlement, quota: currentPlan(auth.user) }, cors);
+      } catch (error) { sendJson(res, 400, { error: error.message }, cors); }
       return true;
     }
     if (req.method === 'POST' && url.pathname === '/api/billing/google-play/verify') {

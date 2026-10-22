@@ -3,9 +3,18 @@
   const defaults = { daily: false, dailyTime: '20:00', tasks: false, encouragement: false, encouragementTime: '09:00', announcements: false };
   let settings;
   try { settings = { ...defaults, ...JSON.parse(localStorage.getItem(key) || '{}') }; } catch { settings = { ...defaults }; }
-  const native = window.Capacitor?.getPlatform?.() === 'android';
+  const platform = window.Capacitor?.getPlatform?.();
+  const native = ['android', 'ios'].includes(platform);
+  const pushConfigured = platform === 'android' && window.DAILY_COMPASS_PUSH_CONFIGURED;
+  if (platform === 'ios') {
+    settings.announcements = false;
+    const option = document.getElementById('notify-announcements');
+    option.checked = false; option.disabled = true;
+    option.closest('label').hidden = true;
+    option.closest('label').nextElementSibling.hidden = true;
+  }
   const local = native ? window.capacitorLocalNotifications?.LocalNotifications : null;
-  const push = native ? window.capacitorPushNotifications?.PushNotifications : null;
+  const push = platform === 'android' ? window.capacitorPushNotifications?.PushNotifications : null;
   const dialog = document.getElementById('notificationsDialog');
   const status = document.getElementById('notificationStatus');
   let queue = Promise.resolve(), pushListeners = false, deviceToken = localStorage.getItem('daily-compass-push-token') || '';
@@ -16,12 +25,13 @@
     fields.forEach(name => { const input = document.getElementById(`notify-${name}`); if (input.type === 'checkbox') input.checked = Boolean(settings[name]); else input.value = settings[name]; });
   }
   async function permission(ask) {
-    if (!local) throw new Error('Phone reminders are available in the updated Android app.');
+    if (!local) throw new Error('Phone reminders are available in the iPhone and Android apps.');
     let result = await local.checkPermissions();
     if (ask && result.display !== 'granted') result = await local.requestPermissions();
     if (result.display !== 'granted') throw new Error('Notifications are blocked. Allow Daily Compass notifications in your phone settings, then try again.');
   }
   async function channels() {
+    if (platform !== 'android') return;
     for (const [id, name] of [['compass-checkins', 'Daily check-ins'], ['compass-tasks', 'Tasks and goals'], ['compass-encouragement', 'Encouragement'], ['compass-announcements', 'App announcements']]) {
       await local.createChannel({ id, name, importance: 3, visibility: 0 });
     }
@@ -34,7 +44,11 @@
       if (owned.length) await local.cancel({ notifications: owned.map(item => ({ id: item.id })) });
       if (!(settings.daily || settings.tasks || settings.encouragement)) return;
       await permission(false);
-      const notifications = CompassNotificationPlan.make(settings, entries);
+      const notifications = CompassNotificationPlan.make(settings, entries).map(item => {
+        if (platform !== 'ios') return item;
+        const { channelId, smallIcon, isExactNotification, ...iosItem } = item;
+        return iosItem;
+      });
       if (notifications.length) { await channels(); await local.schedule({ notifications }); }
     });
     return queue;
@@ -46,7 +60,7 @@
     if (!response.ok) throw new Error(data.error || 'Could not save announcement preferences.');
   }
   async function setupPush() {
-    if (!window.DAILY_COMPASS_PUSH_CONFIGURED || !push) throw new Error('App announcements need Firebase setup and a new Android release. Daily reminders work independently.');
+    if (!pushConfigured || !push) throw new Error('App announcements need Firebase setup and a new Android release. Daily reminders work independently.');
     if (!pushListeners) {
       await push.addListener('registration', async ({ value }) => {
         deviceToken = value; localStorage.setItem('daily-compass-push-token', value);
@@ -65,7 +79,7 @@
   }
   document.getElementById('notificationsBtn').onclick = async () => {
     renderSettings(); dialog.showModal();
-    tell(native ? 'Choose what reaches your phone. Reminder times use your phone’s local time and may be delayed by battery settings.' : 'Phone notifications are available in the Android app.');
+    tell(native ? 'Choose what reaches your phone. Reminder times use your phone’s local time and may be delayed by battery settings.' : 'Phone reminders are available in the iPhone and Android apps.');
     try {
       const response = await fetch(apiUrl('/api/notifications/status'), { headers: { Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` } });
       if (response.ok) { const data = await response.json(); document.getElementById('announcementComposer').hidden = !data.canSend; }
@@ -76,10 +90,10 @@
     const next = Object.fromEntries(fields.map(name => { const input = document.getElementById(`notify-${name}`); return [name, input.type === 'checkbox' ? input.checked : input.value]; }));
     try {
       if (next.daily || next.tasks || next.encouragement || next.announcements) await permission(true);
-      if (next.announcements && !window.DAILY_COMPASS_PUSH_CONFIGURED) throw new Error('Announcements need Firebase setup first. Turn that option off to save phone reminders now.');
+      if (next.announcements && !pushConfigured) throw new Error('Announcements need Firebase setup first. Turn that option off to save phone reminders now.');
       if (!next.announcements && deviceToken) {
         await tokenRequest('DELETE', deviceToken);
-        if (push && window.DAILY_COMPASS_PUSH_CONFIGURED) await push.unregister();
+        if (push && pushConfigured) await push.unregister();
         deviceToken = ''; localStorage.removeItem('daily-compass-push-token');
       }
       const before = settings; settings = next;
@@ -89,7 +103,7 @@
     } catch (error) { tell(error.message); } finally { button.disabled = false; }
   };
   document.getElementById('notificationTest').onclick = async () => {
-    try { await permission(true); await channels(); await local.schedule({ notifications: [{ id: 1003, title: 'Daily Compass', body: 'Your phone notifications are working.', channelId: 'compass-checkins', smallIcon: 'ic_stat_compass', isExactNotification: false, schedule: { at: new Date(Date.now() + 5000) } }] }); tell('Test scheduled. Check your phone’s notification tray in a few seconds.'); }
+    try { await permission(true); await channels(); await local.schedule({ notifications: [{ id: 1003, title: 'Daily Compass', body: 'Your phone notifications are working.', ...(platform === 'android' ? { channelId: 'compass-checkins', smallIcon: 'ic_stat_compass', isExactNotification: false } : {}), schedule: { at: new Date(Date.now() + 5000) } }] }); tell('Test scheduled. Check your phone’s notification tray in a few seconds.'); }
     catch (error) { tell(error.message); }
   };
   document.getElementById('announcementSend').onclick = async event => {
@@ -105,7 +119,7 @@
   };
   window.compassNotifications = {
     sync: () => sync().catch(error => tell(error.message)),
-    async cleanup(accountDeleted = false) { settings = { ...defaults }; persist(); await sync(); if (deviceToken && !accountDeleted) await tokenRequest('DELETE', deviceToken); localStorage.removeItem('daily-compass-push-token'); if (push && window.DAILY_COMPASS_PUSH_CONFIGURED) await push.unregister(); },
+    async cleanup(accountDeleted = false) { settings = { ...defaults }; persist(); await sync(); if (deviceToken && !accountDeleted) await tokenRequest('DELETE', deviceToken); localStorage.removeItem('daily-compass-push-token'); if (push && pushConfigured) await push.unregister(); },
     settings: () => ({ ...settings })
   };
   if (local) {
