@@ -1,0 +1,24 @@
+name: DailyCompassStoreCapture
+options:
+  bundleIdPrefix: com.kevthedev.dailycompass
+targets:
+  CaptureTests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources: [CaptureTests.swift]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: "5.0"
+schemes:
+  Capture:
+    build:
+      targets:
+        CaptureTests: [test]
+    test:
+      targets: [CaptureTests]
+      environmentVariables:
+        CAPTURE_EMAIL: ${CAPTURE_EMAIL}
+        CAPTURE_PASSWORD: ${CAPTURE_PASSWORD}

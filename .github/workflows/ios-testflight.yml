@@ -9,7 +9,7 @@ concurrency:
 jobs:
   release:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     defaults:
@@ -84,6 +84,21 @@ jobs:
           path: work/export/*.ipa
           retention-days: 1
           if-no-files-found: error
+      - name: Prepare empty screenshot account
+        run: node scripts/ios-capture-account.mjs
+      - name: Capture genuine iPhone and iPad screens
+        run: bash scripts/capture-ios-store.sh
+      - name: Save native store screenshots
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-store-screenshots
+          path: work/store-screenshots/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Remove empty screenshot account
+        if: always()
+        run: node scripts/ios-capture-account.mjs --cleanup
       - name: Remove credentials
         if: always()
         run: |
@@ -95,6 +110,8 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: daily-compass-ios-release-logs
-          path: work/ios-*.log
+          path: |
+            work/ios-*.log
+            work/*capture*.log
           retention-days: 1
           if-no-files-found: ignore

@@ -14,3 +14,7 @@ data/
 
 # Local notification sender credentials; never include in builds or commits.
 /work/firebase-notification-secrets/
+
+# Ephemeral native screenshot-account credentials
+/work/ios-capture-account.json
+/ci/store-capture/DailyCompassStoreCapture.xcodeproj/

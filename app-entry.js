@@ -377,6 +377,11 @@ async function summarizeJournal(days, scope, button) {
 document.getElementById('summarizeWeekBtn').onclick = event => summarizeJournal(7, 'week', event.currentTarget);
 document.getElementById('summarizeMonthBtn').onclick = event => summarizeJournal(30, 'month', event.currentTarget);
 async function socialRequest(body) {
+  if (['post', 'comment', 'profile'].includes(body.action)) {
+    const subject = body.action === 'profile' ? 'profile text and photo' : body.action === 'comment' ? 'comment' : 'post text and any attached photo';
+    if (!window.confirm('Safety check before sharing: Daily Compass will send this ' + subject + ' and your display name through its server to OpenAI to check for content that violates the Community Guidelines. If it passes, it will be shared with your accepted friends. Private journal entries and health readings are not included. Cancel to keep it unshared. Continue?')) throw new Error('Sharing canceled. Nothing was sent.');
+    body = {...body, moderationConsent: true};
+  }
   const response = await fetch(apiUrl('/api/social'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(AUTH_KEY)}` }, body: JSON.stringify(body) });
   let data; try { data = await response.json(); } catch { throw new Error('The community service returned an unreadable response.'); }
   if (!response.ok) throw new Error(data.error || 'Could not complete that community action.');

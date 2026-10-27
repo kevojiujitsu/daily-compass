@@ -1,3 +1,4 @@
+import { checkCommunityContent } from './community-safety.mjs';
 import { appleBillingReady, verifyApplePurchase, receiveAppleNotification } from './apple-billing.mjs';
 import http from 'node:http';
 import { handleNotifications } from './push-service.mjs';
@@ -396,6 +397,10 @@ async function handleApi(req, res, url, cors) {
       if (req.method !== 'POST') { sendJson(res, 405, { error: 'Method not allowed.' }, cors); return true; }
       try {
         const body = await readJson(req, 700_000), action = String(body.action || ''), targetId = String(body.userId || '');
+        if (['post', 'comment', 'profile'].includes(action)) {
+          if (!allowRequest('community-safety:' + auth.user.id, 30, 10 * 60 * 1000)) throw new Error('Please wait before sharing again.');
+          await checkCommunityContent(body, {apiKey, displayName:auth.user.name});
+        }
         const changed = await mutateDatabase(db => {
           const actor = db.users.find(user => user.id === auth.user.id), actorState = socialState(db, actor);
           const other = targetId ? db.users.find(user => user.id === targetId) : null, otherState = other ? socialState(db, other) : null;
