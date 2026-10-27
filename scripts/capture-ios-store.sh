@@ -13,7 +13,9 @@ for kind in iphone ipad; do
   xcrun simctl bootstatus "$device" -b
   xcrun simctl status_bar "$device" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
   xcrun simctl install "$device" work/capture-app/Build/Products/Debug-iphonesimulator/App.app
-  xcodebuild -project ci/store-capture/DailyCompassStoreCapture.xcodeproj -scheme Capture -destination "platform=iOS Simulator,id=$device" -resultBundlePath "work/$kind-capture.xcresult" CODE_SIGNING_ALLOWED=NO test >"work/$kind-capture.log" 2>&1
+  capture_status=0
+  xcodebuild -project ci/store-capture/DailyCompassStoreCapture.xcodeproj -scheme Capture -destination "platform=iOS Simulator,id=$device" -resultBundlePath "work/$kind-capture.xcresult" CODE_SIGNING_ALLOWED=NO test >"work/$kind-capture.log" 2>&1 || capture_status=$?
   xcrun xcresulttool export attachments --path "work/$kind-capture.xcresult" --output-path "work/store-screenshots/$kind"
   xcrun simctl shutdown "$device"
+  if [ "$capture_status" -ne 0 ]; then exit "$capture_status"; fi
 done

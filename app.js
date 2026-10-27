@@ -175,9 +175,13 @@ async function loadAppleProduct() {
   plusMessage(active ? 'Your account includes 30 AI uses each month.' : 'Checking App Store availability…');
   if (active) return;
   buy.textContent = 'Checking subscription…';
-  if (!nativePurchases || !planState.appleBillingReady || !appleAccountToken) {
-    plusMessage('Subscriptions are being prepared for the App Store. Free features remain available.');
-    buy.textContent = 'Not available yet'; return;
+  if (!nativePurchases) {
+    plusMessage('The Apple purchase module did not load. Please report this message with your TestFlight build number.');
+    buy.textContent = 'Purchase module unavailable'; return;
+  }
+  if (!planState.appleBillingReady || !appleAccountToken) {
+    plusMessage('Could not confirm Apple purchase availability for your account. Close and reopen Plus to retry.');
+    buy.textContent = 'Check account availability'; return;
   }
   try {
     const { products } = await nativePurchases.getProducts({ productIdentifiers: [APPLE_PRODUCT_ID], productType: purchaseType.SUBS });
@@ -199,7 +203,10 @@ async function verifyApplePurchase(transaction) {
 async function restoreApplePurchases() {
   const button = document.getElementById('restorePlusBtn'); button.disabled = true;
   try {
-    if (!nativePurchases || !planState.appleBillingReady) throw new Error('Apple purchase verification is not available yet.');
+    if (!nativePurchases) throw new Error('The Apple purchase module did not load. Please report this message with your TestFlight build number.');
+    if (!await loadQuota()) throw new Error('Could not refresh your account. Check your connection and try Restore again.');
+    if (!planState.appleBillingReady) throw new Error('The server has not enabled Apple purchases for this app. Please contact support.');
+    if (!appleAccountToken) throw new Error('Could not identify your purchase account. Lock your profile and sign in again.');
     await nativePurchases.restorePurchases();
     const { purchases } = await nativePurchases.getPurchases({ productType: purchaseType.SUBS });
     const owned = purchases.find(item => item.productIdentifier === APPLE_PRODUCT_ID && item.jwsRepresentation);
@@ -268,7 +275,19 @@ function showPage(name) {
   if (name === 'health') { renderHealth(); if (localStorage.getItem(HEALTH_CONNECTED_KEY) === 'true') refreshHealthData(); }
 }
 const plusDialog = document.getElementById('plusDialog');
-function openPlusDialog() { plusDialog.showModal(); loadPlusProduct(); }
+async function openPlusDialog() {
+  plusDialog.showModal();
+  const buy = document.getElementById('buyPlusBtn');
+  buy.disabled = true;
+  buy.textContent = 'Refreshing account…';
+  plusMessage('Checking your account and store availability…');
+  if (!await loadQuota()) {
+    plusMessage('Could not refresh your account. Check your connection, then close and reopen Plus.');
+    buy.textContent = 'Account unavailable';
+    return;
+  }
+  await loadPlusProduct();
+}
 document.getElementById('topPlusBtn').onclick = () => { document.getElementById('profileDialog').close(); openPlusDialog(); };
 document.getElementById('profileBtn').onclick = () => { document.getElementById('profileName').textContent = profile?.name || 'Your profile'; document.getElementById('profileEmail').textContent = profile?.email || ''; document.getElementById('profileDialog').showModal(); };
 document.getElementById('changeMoodBtn').onclick = () => { const gate = document.getElementById('moodGate'); gate.querySelector('.mood-dialog').hidden = false; const quote = document.getElementById('quoteTransition'); quote.hidden = true; quote.classList.remove('visible','leaving'); gate.classList.remove('leaving'); gate.setAttribute('aria-labelledby','moodGateTitle'); gate.setAttribute('aria-describedby','moodGateIntro'); gate.hidden = false; document.querySelector('.shell').inert = true; selectedMood = ''; document.getElementById('continueMood').disabled = true; document.getElementById('moodSelectionHint').textContent = 'Select a mood to continue.'; document.querySelectorAll('.mood-option').forEach(button => button.setAttribute('aria-pressed','false')); document.querySelector('.mood-option')?.focus(); };
