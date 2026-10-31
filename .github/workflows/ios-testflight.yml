@@ -84,21 +84,6 @@ jobs:
           path: work/export/*.ipa
           retention-days: 1
           if-no-files-found: error
-      - name: Prepare empty screenshot account
-        run: node scripts/ios-capture-account.mjs
-      - name: Capture genuine iPhone and iPad screens
-        run: bash scripts/capture-ios-store.sh
-      - name: Save native store screenshots
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: daily-compass-store-screenshots
-          path: work/store-screenshots/
-          retention-days: 7
-          if-no-files-found: warn
-      - name: Remove empty screenshot account
-        if: always()
-        run: node scripts/ios-capture-account.mjs --cleanup
       - name: Remove credentials
         if: always()
         run: |
