@@ -23,7 +23,7 @@ final class CaptureTests: XCTestCase {
         password.tap()
         password.typeText(ProcessInfo.processInfo.environment["CAPTURE_PASSWORD"]!)
         app.buttons["Log in →"].tap()
-        let calm = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Calm")).firstMatch
+        let calm = app.switches.matching(NSPredicate(format: "label CONTAINS[c] %@", "Happy")).firstMatch
         XCTAssertTrue(calm.waitForExistence(timeout: 30))
         calm.tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Continue to my day")).firstMatch.tap()
