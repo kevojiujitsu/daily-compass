@@ -1,21 +1,17 @@
 name: iOS simulator build (manual)
-
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: ios-preparation-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   simulator:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -23,68 +19,32 @@ jobs:
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24'
-      - name: Confirm Xcode and iOS SDK
-        run: |
-          xcodebuild -version
-          xcodebuild -showsdks
-      - name: Install locked dependencies
+      - name: Prepare app
         run: |
           npm install --global pnpm@10.20.0
           pnpm install --frozen-lockfile
-      - name: Prepare iOS assets and plugins
-        run: npm run ios
-      - name: Validate prepared configuration
-        run: npm run ios:check
-      - name: Build unsigned iOS simulator app
-        shell: bash
-        run: |
-          mkdir -p work
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath work/ios-derived \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee work/ios-build.log
-      - name: Launch on iPhone simulator
-        shell: bash
-        run: |
-          runtime=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and "iOS-26" in x["identifier"]]; assert r, "No iOS 26 runtime installed"; print(sorted(r,key=lambda x:tuple(map(int,x["version"].split("."))))[-1]["identifier"])')
-          device=$(xcrun simctl create 'Daily Compass smoke test' com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max "$runtime")
-          echo "SIMULATOR_UDID=$device" >> "$GITHUB_ENV"
-          xcrun simctl boot "$device"
-          xcrun simctl bootstatus "$device" -b
-          xcrun simctl status_bar "$device" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
-          xcrun simctl install "$device" work/ios-derived/Build/Products/Debug-iphonesimulator/App.app
-          xcrun simctl launch "$device" com.kevthedev.dailycompass.mobile
-          sleep 12
-          xcrun simctl io "$device" screenshot work/ios-launch.png
-      - name: Save iPhone launch screenshot
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: daily-compass-iphone-launch
-          path: work/ios-launch.png
-          retention-days: 1
-          if-no-files-found: error
-      - name: Stop test simulator
-        if: always() && env.SIMULATOR_UDID != ''
-        run: xcrun simctl shutdown "$SIMULATOR_UDID"
-      - name: Package simulator app
-        run: ditto -c -k --sequesterRsrc --keepParent work/ios-derived/Build/Products/Debug-iphonesimulator/App.app work/DailyCompass-simulator.zip
-      - name: Save simulator build
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: daily-compass-ios-simulator
-          path: work/DailyCompass-simulator.zip
-          retention-days: 1
-          if-no-files-found: error
-      - name: Save build log
+          npm run ios
+          npm run ios:check
+      - name: Prepare empty screenshot account
+        run: node scripts/ios-capture-account.mjs
+      - name: Capture genuine iPhone and iPad screens
+        run: bash scripts/capture-ios-store.sh
+      - name: Save native store screenshots
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: daily-compass-ios-build-log
-          path: work/ios-build.log
+          name: daily-compass-store-screenshots
+          path: work/store-screenshots/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Remove empty screenshot account
+        if: always()
+        run: node scripts/ios-capture-account.mjs --cleanup
+      - name: Save capture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: daily-compass-capture-logs
+          path: work/*capture*.log
           retention-days: 1
           if-no-files-found: ignore
