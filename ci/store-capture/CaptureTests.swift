@@ -30,6 +30,10 @@ final class CaptureTests: XCTestCase {
         let today = app.buttons["Today"]
         XCTAssertTrue(today.waitForExistence(timeout: 20))
         sleep(4)
+        if app.keyboards.count > 0 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.58)).tap()
+            sleep(2)
+        }
         capture(app, "01-today")
         for section in ["Tasks", "Health", "Community"] {
             let button = app.buttons[section]
@@ -38,11 +42,5 @@ final class CaptureTests: XCTestCase {
             sleep(2)
             capture(app, section.lowercased())
         }
-        today.tap()
-        app.buttons["Your profile and settings"].tap()
-        app.buttons["Explore Plus →"].tap()
-        XCTAssertTrue(app.staticTexts["More support for your day"].waitForExistence(timeout: 10))
-        sleep(5)
-        capture(app, "compass-plus")
     }
 }
