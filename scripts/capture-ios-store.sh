@@ -6,8 +6,8 @@ xcodegen generate --spec ci/store-capture/project.yml
 runtime=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and "iOS-26" in x["identifier"]]; print(sorted(r,key=lambda x:tuple(map(int,x["version"].split("."))))[-1]["identifier"])')
 mkdir -p work/store-screenshots
 for kind in iphone ipad; do
-  if [ "$kind" = iphone ]; then needle='iPhone 16 Pro'; else needle='iPad Pro (13-inch)'; fi
-  device_type=$(xcrun simctl list devicetypes --json | NEEDLE="$needle" python3 -c 'import json,sys,os; ds=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in ds if os.environ["NEEDLE"] in d["name"]))')
+  if [ "$kind" = iphone ]; then needle='iPhone 16 Pro'; else needle='iPad Pro'; fi
+  device_type=$(xcrun simctl list devicetypes --json | NEEDLE="$needle" python3 -c 'import json,sys,os; ds=json.load(sys.stdin)["devicetypes"]; print(next(d["identifier"] for d in ds if os.environ["NEEDLE"] in d["name"] and (os.environ["NEEDLE"] != "iPad Pro" or "13-inch" in d["name"])))')
   device=$(xcrun simctl create "Daily Compass $kind captures" "$device_type" "$runtime")
   xcrun simctl boot "$device"
   xcrun simctl bootstatus "$device" -b
