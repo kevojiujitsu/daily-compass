@@ -8,6 +8,7 @@
     "build": "node build.mjs",
     "android": "node build.mjs && npx cap sync android",
     "test:notifications": "node tests/notifications.test.mjs",
+    "test:social-reports": "node tests/social-reports.test.mjs",
     "ios": "node build.mjs && npx cap sync ios",
     "ios:open": "npx cap open ios",
     "ios:check": "node scripts/verify-ios-preparation.mjs"

@@ -235,7 +235,7 @@ function publicSocialProfile(profile = {}) {
   return { avatar, hobbies, spotify, age, hometown: String(profile.hometown || '').trim().slice(0, 80), quote: String(profile.quote || '').trim().slice(0, 160), relationshipStatus };
 }
 function publicSocialUser(user, includeProfile = true) { return { id: user.id, name: user.name, profile: includeProfile ? publicSocialProfile(user.social?.profile) : { avatar: '', hobbies: [], spotify: '' } }; }
-function publicPost(post) { return { id: post.id, author: post.author, text: post.text, photo: post.photo || '', createdAt: post.createdAt, comments: post.comments || [], reactions: post.reactions || {}, reports: post.reports || [] }; }
+function publicPost(post) { return { id: post.id, author: post.author, text: post.text, photo: post.photo || '', createdAt: post.createdAt, comments: post.comments || [], reactions: post.reactions || {} }; }
 
 async function handleApi(req, res, url, cors) {
   if (req.method === 'GET' && url.pathname === '/api/status') {
