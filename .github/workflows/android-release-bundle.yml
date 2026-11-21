@@ -1,0 +1,57 @@
+name: Android release bundle
+
+on:
+  push:
+    branches:
+      - "release/play-optimization-v1.2.2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web assets
+        run: pnpm build
+
+      - name: Sync Capacitor Android project
+        run: pnpm exec cap sync android
+
+      - name: Build Android App Bundle
+        working-directory: android
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Save bundle and R8 mapping
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-compass-1.2.2-release
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 7
