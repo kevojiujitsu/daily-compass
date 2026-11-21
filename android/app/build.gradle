@@ -7,8 +7,8 @@ android {
         applicationId "com.kevthedev.dailycompass.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.2.1"
+        versionCode 6
+        versionName "1.2.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -18,8 +18,15 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // Enable R8 code shrinking and obfuscation to improve the release DEX.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            // Include full native symbols in the App Bundle for Play Console crash reports.
+            ndk {
+                debugSymbolLevel 'FULL'
+            }
         }
     }
 }
